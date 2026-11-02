@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@import "../styles/base.css";
+@import "../styles/storefront.css";
+@import "../styles/admin.css";
+@import "../styles/responsive.css";
+@import "../styles/mobile.css";
+
+@theme inline {
+  --color-forest: #245440;
+  --color-cream: #f6f4eb;
+  --font-sans: "DM Sans", sans-serif;
+  --font-display: "Manrope", sans-serif;
+}
