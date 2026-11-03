@@ -11,8 +11,8 @@ export class CashMemoService {
       autoFirstPage: true,
       font: resolve("public/fonts/NotoSans-Regular.ttf"),
       info: {
-        Title: `CASH MEMO — ORDER REQUEST ${order.memoNumber}`,
-        Author: order.store.name,
+        Title: `CASH MEMO ${order.memoNumber}`,
+        Author: "Sanjay Store",
       },
     });
     doc.registerFont("Latin", resolve("public/fonts/NotoSans-Regular.ttf"));
@@ -76,8 +76,8 @@ export class CashMemoService {
       return dy + lineHeight;
     };
     const tableHeader = (y: number) => {
-      doc.rect(38, y, 519, 24).fill("#245440");
-      doc.fillColor("#ffffff").font("Latin").fontSize(9);
+      doc.rect(38, y, 519, 28).fill("#245440");
+      doc.fillColor("#ffffff").font("Latin").fontSize(11);
       doc.text("PRODUCT / PACKAGE", 48, y + 6, { width: 230 });
       doc.text("BAGS", 295, y + 6, { width: 42, align: "right" });
       doc.text("RATE", 350, y + 6, { width: 80, align: "right" });
@@ -85,21 +85,27 @@ export class CashMemoService {
       doc.fillColor("#26372e");
     };
     doc.fillColor("#245440");
-    mixed(order.store.name, 38, 34, 519, 21);
+    doc
+      .font("Latin")
+      .fontSize(21)
+      .text("Sanjay Store", 38, 34, {
+        width: doc.page.width - 76,
+        align: "center",
+      });
     doc.fillColor("#536354");
-    mixed(
-      [order.store.contact, order.store.location].filter(Boolean).join(" · "),
-      38,
-      doc.y + 5,
-      519,
-      9,
-    );
-    const headingY = Math.max(98, doc.y + 20);
+    const storeDetails = [order.store.contact, order.store.location]
+      .filter(Boolean)
+      .join(" · ");
+    if (storeDetails) mixed(storeDetails, 38, doc.y + 5, 519, 9);
+    const headingY = Math.max(72, doc.y + 8);
     doc
       .fillColor("#26372e")
       .font("Latin")
       .fontSize(15)
-      .text("CASH MEMO — ORDER REQUEST", 38, headingY);
+      .text("CASH MEMO", 38, headingY, {
+        width: doc.page.width - 76,
+        align: "center",
+      });
     doc.fontSize(10).text(`Memo No: ${order.memoNumber}`, 38, headingY + 29);
     const date = new Intl.DateTimeFormat("en-IN", {
       dateStyle: "medium",
@@ -111,20 +117,20 @@ export class CashMemoService {
     doc.font("Latin").text(`Phone: ${order.customer.phone}`, 38, doc.y + 7);
     let y = doc.y + 23;
     tableHeader(y);
-    y += 30;
+    y += 34;
     for (const item of order.items) {
-      doc.font("Latin").fontSize(10);
+      doc.font("Latin").fontSize(11);
       const nameHeight = mixed(
         `${item.name} · ${item.weight} ${item.unit}`,
         0,
         0,
         235,
-        10,
+        11,
         false,
       );
-      doc.font("Hindi").fontSize(10);
+      doc.font("Hindi").fontSize(11);
       const hindiHeight = item.hindiName
-        ? mixed(item.hindiName, 0, 0, 235, 10, false)
+        ? mixed(item.hindiName, 0, 0, 235, 11, false)
         : 0;
       const height = Math.max(50, nameHeight + hindiHeight + 22);
       if (y + height > 708) {
@@ -134,14 +140,14 @@ export class CashMemoService {
           .fontSize(10)
           .text(`${order.memoNumber} · Continued`, 38, 35);
         tableHeader(60);
-        y = 90;
+        y = 94;
       }
-      mixed(`${item.name} · ${item.weight} ${item.unit}`, 48, y + 5, 235, 10);
+      mixed(`${item.name} · ${item.weight} ${item.unit}`, 48, y + 5, 235, 11);
       if (item.hindiName) {
         doc.fillColor("#536354");
-        mixed(item.hindiName, 48, doc.y + 3, 235, 10);
+        mixed(item.hindiName, 48, doc.y + 3, 235, 11);
       }
-      doc.fillColor("#26372e").font("Latin").fontSize(10);
+      doc.fillColor("#26372e").font("Latin").fontSize(11);
       doc.text(String(item.quantity), 295, y + 8, {
         width: 42,
         align: "right",

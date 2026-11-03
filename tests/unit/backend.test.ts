@@ -75,7 +75,7 @@ test("server prices, cash memo totals, INR/Hindi fonts and exact disclaimers", a
     });
     for (const part of [
       "CASH MEMO",
-      "ORDER REQUEST",
+      "Sanjay Store",
       "CM-000001",
       "Rahul Sharma",
       "₹4,000.00",
@@ -84,6 +84,7 @@ test("server prices, cash memo totals, INR/Hindi fonts and exact disclaimers", a
       "IST",
     ])
       assert.ok(text.includes(part), part);
+    assert.ok(!text.includes("ORDER REQUEST"));
     assert.match(text, /[\u0900-\u097f]/);
     const fonts = execFileSync("pdffonts", [path], { encoding: "utf8" });
     assert.match(fonts, /NotoSansDevanagari/);

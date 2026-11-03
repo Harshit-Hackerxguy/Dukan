@@ -49,7 +49,7 @@ Rate limits are held server-side in the development adapter: checkout 60 request
 
 ## Cash memo PDFs
 
-`CashMemoService` uses PDFKit, not screenshots. A4 memos contain the exact heading **CASH MEMO — ORDER REQUEST**, store details when configured, sequential reference (`CM-000001`), Asia/Kolkata date/time, customer name/phone, package sizes, quantities in bags, rates, line totals, and grand total. Large orders continue onto additional pages with repeated table headers and page numbers.
+`CashMemoService` uses PDFKit, not screenshots. A4 memos contain centered **Sanjay Store** and **CASH MEMO** headings, store details when configured, sequential reference (`CM-000001`), Asia/Kolkata date/time, customer name/phone, package sizes, quantities in bags, rates, line totals, and grand total. Large orders continue onto additional pages with repeated table headers and page numbers.
 
 Noto Sans and Noto Sans Devanagari fonts are bundled under `public/fonts/`, licensed under the included SIL Open Font License. They are embedded in the PDF for rupee symbols and Hindi shaping. The build tracing configuration includes both fonts for server routes. Product/store/customer text is laid out as text, with explicit mixed-font wrapping.
 
