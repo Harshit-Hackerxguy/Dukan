@@ -4,6 +4,7 @@
 @import "../styles/admin.css";
 @import "../styles/responsive.css";
 @import "../styles/mobile.css";
+@import "../styles/phase2.css";
 
 @theme inline {
   --color-forest: #245440;

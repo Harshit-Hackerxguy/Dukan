@@ -9,16 +9,18 @@ import {
   ChevronRight,
   CircleHelp,
   LayoutDashboard,
-  Info,
   Leaf,
   Menu,
   Package,
   Settings2,
-  ShieldAlert,
+  ShieldCheck,
+  LogOut,
+  Boxes,
   ShoppingBag,
   Sprout,
   Tags,
 } from "lucide-react";
+import { api } from "@/lib/api";
 import { Brand } from "@/components/brand";
 import { Modal } from "@/components/ui/modal";
 import { useStore } from "@/components/store-provider";
@@ -29,8 +31,9 @@ const nav = [
   { href: "/admin", name: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/products", name: "Products", icon: Package },
   { href: "/admin/categories", name: "Categories", icon: Tags },
-  { href: "/admin/orders", name: "Orders", icon: ShoppingBag, future: true },
-  { href: "/admin/settings", name: "Settings", icon: Settings2, future: true },
+  { href: "/admin/inventory", name: "Inventory", icon: Boxes },
+  { href: "/admin/orders", name: "Orders", icon: ShoppingBag },
+  { href: "/admin/settings", name: "Settings", icon: Settings2 },
 ];
 const EditorContext = createContext<(product: Product | "new") => void>(
   () => {},
@@ -55,7 +58,7 @@ function AdminNavigation({
         </span>
         <div>
           <strong>Your wholesale store</strong>
-          <small>Local demo workspace</small>
+          <small>Development workspace</small>
         </div>
         <ChevronRight size={14} />
       </div>
@@ -71,9 +74,6 @@ function AdminNavigation({
           >
             <item.icon size={19} strokeWidth={1.7} />
             <span>{item.name}</span>
-            {item.future && (
-              <span className="soon-dot" title="Future feature" />
-            )}
           </Link>
         ))}
       </nav>
@@ -88,7 +88,7 @@ function AdminNavigation({
           <ArrowUpRight size={15} />
         </Link>
         <div className="sidebar-preview">
-          <ShieldAlert size={14} /> Unsecured UI preview
+          <ShieldCheck size={14} /> Authenticated admin
         </div>
       </div>
     </>
@@ -96,7 +96,7 @@ function AdminNavigation({
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const { storageAvailable } = useStore();
+  const { loading, error, refresh } = useStore();
   const pathname = usePathname();
   const [editor, setEditor] = useState<Product | "new" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -132,31 +132,40 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/admin/settings"
                 className="admin-help icon-button"
-                aria-label="About this demo"
+                aria-label="Store settings"
               >
                 <CircleHelp size={19} />
               </Link>
-              <span className="admin-avatar" title="Demo workspace">
-                D
-              </span>
+              <button
+                className="icon-button"
+                aria-label="Sign out"
+                onClick={async () => {
+                  await api("/api/auth/logout", { method: "POST" });
+                  window.location.reload();
+                }}
+              >
+                <LogOut size={19} />
+              </button>
             </div>
           </header>
           <main id="admin-main" className="admin-main">
-            {!storageAvailable && (
-              <div className="storage-notice" role="status">
-                <Info size={17} />
-                <span>
-                  Your browser’s storage is unavailable or full. Changes will
-                  last for this visit only.
-                </span>
+            {error && (
+              <div className="storage-notice" role="alert">
+                {error}
+                <button onClick={() => void refresh()}>Try again</button>
               </div>
             )}
+            {loading && <p role="status">Loading catalogue…</p>}
+            <div className="development-banner">
+              Phase 2 development data · Permanent database connection comes in
+              Phase 3.
+            </div>
             {children}
           </main>
           <footer className="admin-footer">
             <span>A little more organised. A lot more effortless.</span>
             <span>
-              <Leaf size={13} /> Phase 1 · Local demo
+              <Leaf size={13} /> Phase 2 · Development
             </span>
           </footer>
         </div>

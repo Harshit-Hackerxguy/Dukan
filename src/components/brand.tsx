@@ -1,19 +1,21 @@
+"use client";
+import { useStore } from "@/components/store-provider";
 import Link from "next/link";
 import { Wheat } from "lucide-react";
-import { storeConfig } from "@/lib/store-config";
 
 export function Brand({ admin = false }: { admin?: boolean }) {
+  const { storeInfo } = useStore();
   return (
     <Link
       href={admin ? "/admin" : "/"}
       className="brand"
-      aria-label={`${storeConfig.name} ${admin ? "admin dashboard" : "home"}`}
+      aria-label={`${storeInfo.name} ${admin ? "admin dashboard" : "home"}`}
     >
       <span className="brand-mark">
         <Wheat size={25} strokeWidth={1.7} />
       </span>
       <span className="brand-type">
-        {storeConfig.name}
+        {storeInfo.name}
         <b>.</b>
         <small>{admin ? "STORE MANAGER" : "WHOLESALE, MADE SIMPLE"}</small>
       </span>

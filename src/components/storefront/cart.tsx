@@ -3,12 +3,13 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Info,
   Minus,
   Plus,
   ShoppingBag,
   Trash2,
 } from "lucide-react";
+import { useState } from "react";
+import { Checkout } from "./checkout";
 import { useStore } from "@/components/store-provider";
 import { ProductImage } from "@/components/product-art";
 import { Modal } from "@/components/ui/modal";
@@ -60,22 +61,37 @@ export function Cart({
 }) {
   const { products, cart, setQuantity, clearCart, notify, storageAvailable } =
     useStore();
+  const [checkout, setCheckout] = useState(false);
+  const [busy, setBusy] = useState(false);
   const items = products.filter((p) => cart[p.id]);
   const count = items.reduce((sum, p) => sum + cart[p.id], 0);
   const total = items.reduce((sum, p) => sum + p.price * cart[p.id], 0);
   return (
     <Modal
       open={open}
-      onOpenChange={onOpenChange}
-      title="Your bag"
+      onOpenChange={(value) => {
+        if (!busy) {
+          onOpenChange(value);
+          if (!value) setCheckout(false);
+        }
+      }}
+      title={checkout ? "Your order request" : "Your bag"}
       description={`${count} ${count === 1 ? "bag" : "bags"} of everyday goodness`}
       className="cart-dialog"
     >
-      {items.length ? (
+      {checkout ? (
+        <Checkout
+          onBusy={setBusy}
+          onBack={() => {
+            setCheckout(false);
+            if (!items.length) onOpenChange(false);
+          }}
+        />
+      ) : items.length ? (
         <>
           <div className="cart-note">
             <ShoppingBag size={16} />
-            <span>A little planning. A well-stocked kitchen.</span>
+            <span>Wholesale essentials, ready for your request.</span>
           </div>
           <div className="cart-items">
             {items.map((p) => (
@@ -86,7 +102,7 @@ export function Cart({
                 <div className="cart-item-info">
                   <h3>{p.name}</h3>
                   <p>
-                    {p.weight} {p.unit} / bag
+                    {p.weight} {p.unit} / bag · {formatPrice(p.price)} each
                   </p>
                   <QuantityControl
                     id={p.id}
@@ -126,29 +142,19 @@ export function Cart({
             )}
             <div className="summary-line">
               <span>
-                Subtotal{" "}
+                Grand total{" "}
                 <small>
                   ({count} {count === 1 ? "bag" : "bags"})
                 </small>
               </span>
               <strong>{formatPrice(total)}</strong>
             </div>
-            <p>Demo catalogue prices. Delivery and taxes are not calculated.</p>
-            <div className="demo-callout">
-              <Info size={18} />
-              <div>
-                <strong>Just a little preview for now</strong>
-                <p>
-                  You can explore products and build your bag. Ordering and
-                  payments will be available in a future phase.
-                </p>
-              </div>
-            </div>
+            <p>Shipping charges may vary and will be confirmed by the store.</p>
             <button
               className="button button-primary full-width"
-              onClick={() => onOpenChange(false)}
+              onClick={() => setCheckout(true)}
             >
-              Keep exploring <ArrowRight size={17} />
+              Submit Order <ArrowRight size={17} />
             </button>
           </div>
         </>

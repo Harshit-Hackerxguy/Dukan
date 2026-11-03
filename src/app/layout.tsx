@@ -14,7 +14,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: `${storeConfig.name} — Wholesale, made simple`,
   description:
-    "A local demo catalogue of rice, sugar, and fresh produce. Everyday essentials, in wholesale quantities.",
+    "Browse wholesale rice, sugar, and fresh produce. Submit a simple order request with your name and mobile number.",
 };
 
 export const viewport: Viewport = {

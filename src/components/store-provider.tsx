@@ -5,181 +5,177 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useReducer,
   useRef,
+  useState,
 } from "react";
+import { usePathname } from "next/navigation";
 import { Check, X } from "lucide-react";
-import { initialProducts, type Product } from "@/lib/products";
+import {
+  categories as seedCategories,
+  type Category,
+  type Product,
+} from "@/lib/products";
+import { api } from "@/lib/api";
 
 type Cart = Record<string, number>;
-type State = { products: Product[]; cart: Cart; hydrated: boolean };
-type Action =
-  | { type: "hydrate"; products: Product[]; cart: Cart }
-  | { type: "quantity"; id: string; quantity: number }
-  | { type: "save"; product: Product }
-  | { type: "delete"; id: string }
-  | { type: "clear" }
-  | { type: "reset" };
-const STORAGE_KEY = "dukan-phase1-v1";
-const initialState: State = {
-  products: initialProducts,
-  cart: {},
-  hydrated: false,
+type StoreInfo = {
+  name: string;
+  contact: string;
+  location: string;
+  hours: string;
 };
-
-function reducer(state: State, action: Action): State {
-  switch (action.type) {
-    case "hydrate":
-      return { products: action.products, cart: action.cart, hydrated: true };
-    case "quantity": {
-      if (!state.products.some((p) => p.id === action.id && p.available))
-        return state;
-      const cart = { ...state.cart };
-      const quantity = Math.min(99, Math.max(0, Math.floor(action.quantity)));
-      if (quantity) cart[action.id] = quantity;
-      else delete cart[action.id];
-      return { ...state, cart };
-    }
-    case "save": {
-      const exists = state.products.some((p) => p.id === action.product.id);
-      const cart = { ...state.cart };
-      if (!action.product.available) delete cart[action.product.id];
-      return {
-        ...state,
-        cart,
-        products: exists
-          ? state.products.map((p) =>
-              p.id === action.product.id ? action.product : p,
-            )
-          : [...state.products, action.product],
-      };
-    }
-    case "delete": {
-      const cart = { ...state.cart };
-      delete cart[action.id];
-      return {
-        ...state,
-        cart,
-        products: state.products.filter((p) => p.id !== action.id),
-      };
-    }
-    case "clear":
-      return { ...state, cart: {} };
-    case "reset":
-      return { products: initialProducts, cart: {}, hydrated: true };
-  }
-}
-
-function validProducts(value: unknown): value is Product[] {
-  return (
-    Array.isArray(value) &&
-    value.length <= 5000 &&
-    value.every(
-      (p) =>
-        p &&
-        typeof p.id === "string" &&
-        typeof p.name === "string" &&
-        typeof p.hindiName === "string" &&
-        ["rice", "essentials", "produce"].includes(p.category) &&
-        ["rice", "sugar", "potatoes"].includes(p.illustration) &&
-        ["green", "ochre", "plum", "blue", "cream"].includes(p.tone) &&
-        ["kg", "g", "L"].includes(p.unit) &&
-        Number.isFinite(p.price) &&
-        p.price >= 0 &&
-        Number.isFinite(p.weight) &&
-        p.weight > 0 &&
-        typeof p.image === "string" &&
-        typeof p.description === "string" &&
-        typeof p.available === "boolean",
-    ) &&
-    new Set(value.map((p) => p.id)).size === value.length
-  );
-}
-
-type StoreContextType = State & {
+type StoreContextType = {
+  products: Product[];
+  categories: Category[];
+  cart: Cart;
+  storeInfo: StoreInfo;
+  hydrated: boolean;
+  loading: boolean;
+  error: string;
   storageAvailable: boolean;
   setQuantity: (id: string, quantity: number) => void;
-  saveProduct: (product: Product) => void;
-  deleteProduct: (id: string) => void;
+  saveProduct: (product: Product) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
   clearCart: () => void;
-  resetDemo: () => void;
+  refresh: () => Promise<void>;
   notify: (message: string) => void;
 };
 const StoreContext = createContext<StoreContextType | null>(null);
+const STORAGE_KEY = "dukan-phase2-bag";
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
-  const [toast, setToast] = useReducer((_: string, value: string) => value, "");
-  const [storageAvailable, setStorageAvailable] = useReducer(
-    (_: boolean, available: boolean) => available,
-    true,
-  );
+  const admin = usePathname().startsWith("/admin");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState(seedCategories);
+  const [storeInfo, setStoreInfo] = useState<StoreInfo>({
+    name: "dukan",
+    contact: "",
+    location: "",
+    hours: "",
+  });
+  const [cart, setCart] = useState<Cart>({});
+  const [hydrated, setHydrated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [storageAvailable, setStorageAvailable] = useState(true);
+  const [toast, setToast] = useState("");
+  const requestId = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notify = useCallback((message: string) => {
     if (timer.current) clearTimeout(timer.current);
     setToast(message);
-    timer.current = setTimeout(() => setToast(""), 3500);
+    timer.current = setTimeout(() => setToast(""), 4500);
   }, []);
-
-  useEffect(() => {
-    let products = initialProducts;
-    const cart: Cart = {};
+  const refresh = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
+    setError("");
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (validProducts(saved.products)) products = saved.products;
-        if (saved.cart && typeof saved.cart === "object") {
-          for (const p of products) {
-            const quantity = saved.cart[p.id];
-            if (p.available && Number.isInteger(quantity) && quantity > 0)
-              cart[p.id] = Math.min(99, quantity);
-          }
-        }
+      const data = await api<{
+        products: Product[];
+        categories: Category[];
+        store?: StoreInfo;
+      }>(admin ? "/api/admin/products" : "/api/catalogue");
+      if (id !== requestId.current) return;
+      setProducts(data.products);
+      setCategories(data.categories);
+      if (data.store) setStoreInfo(data.store);
+      if (!admin)
+        setCart((current) =>
+          Object.fromEntries(
+            Object.entries(current).filter(([id]) =>
+              data.products.some((p) => p.id === id && p.available),
+            ),
+          ),
+        );
+    } catch (e) {
+      if (id === requestId.current) {
+        setError((e as Error).message);
+        setProducts([]);
       }
-    } catch {
-      /* Storage is optional; the in-memory demo remains usable. */
+    } finally {
+      if (id === requestId.current) setLoading(false);
     }
-    dispatch({ type: "hydrate", products, cart });
+  }, [admin]);
+  // Synchronize remote data when switching between public and admin routes.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refresh();
+  }, [refresh]);
+  useEffect(() => {
+    const restored: Cart = {};
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      if (saved && typeof saved === "object")
+        for (const [id, q] of Object.entries(saved).slice(0, 500))
+          if (
+            /^[a-zA-Z0-9-]+$/.test(id) &&
+            Number.isInteger(q) &&
+            Number(q) > 0
+          )
+            restored[id] = Math.min(99, Number(q));
+    } catch {
+      /* Browser persistence is optional. */
+    }
+    // Browser storage can only be restored after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCart(restored);
+    setHydrated(true);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
   }, []);
-
   useEffect(() => {
-    if (!state.hydrated) return;
+    if (!hydrated) return;
+    // Report the external storage write outcome to the bag UI.
     try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ products: state.products, cart: state.cart }),
-      );
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStorageAvailable(true);
     } catch {
       setStorageAvailable(false);
     }
-  }, [state]);
-
+  }, [cart, hydrated]);
   return (
     <StoreContext.Provider
       value={{
-        ...state,
+        products,
+        categories,
+        cart,
+        storeInfo,
+        hydrated,
+        loading,
+        error,
         storageAvailable,
-        setQuantity: (id, quantity) =>
-          dispatch({ type: "quantity", id, quantity }),
-        saveProduct: (product) => {
-          dispatch({ type: "save", product });
-          notify("Product saved to your demo catalogue");
-        },
-        deleteProduct: (id) => {
-          dispatch({ type: "delete", id });
-          notify("Product removed from the demo catalogue");
-        },
-        clearCart: () => dispatch({ type: "clear" }),
-        resetDemo: () => {
-          dispatch({ type: "reset" });
-          notify("Demo catalogue restored");
-        },
+        refresh,
         notify,
+        setQuantity: (id, value) => {
+          if (!products.some((p) => p.id === id && p.available) && value !== 0)
+            return;
+          setCart((current) => {
+            const next = { ...current };
+            const q = Math.min(99, Math.max(0, Math.floor(value)));
+            if (q) next[id] = q;
+            else delete next[id];
+            return next;
+          });
+        },
+        saveProduct: async (product) => {
+          await api("/api/admin/products", {
+            method: "POST",
+            body: JSON.stringify(product),
+          });
+          await refresh();
+          notify("Product saved. Stock is managed separately in Inventory.");
+        },
+        deleteProduct: async (id) => {
+          await api(`/api/admin/products/${encodeURIComponent(id)}`, {
+            method: "DELETE",
+          });
+          await refresh();
+          notify("Product archived. Existing order records are preserved.");
+        },
+        clearCart: () => setCart({}),
       }}
     >
       {children}
@@ -206,7 +202,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     </StoreContext.Provider>
   );
 }
-
 export function useStore() {
   const context = useContext(StoreContext);
   if (!context) throw new Error("useStore must be used within StoreProvider");

@@ -1,84 +1,39 @@
-# Dukan — wholesale store UI
+# Dukan — wholesale order requests
 
-A complete Phase 1 frontend for an Indian wholesale grocery store. “dukan” is temporary, configurable branding. All six seed products and prices are demo data.
+Phase 2 extends the existing Next.js 16 / React / TypeScript app. It retains the green, cream, and white design, replaces browser-owned catalogue data with server APIs, and adds checkout, cash memo PDFs, WhatsApp adapters, and authenticated store management.
 
-## Run locally
+**This is a development implementation. PostgreSQL is intentionally deferred to Phase 3. The temporary repositories refuse production runtime requests.** No payments, customer accounts, automatic stock deductions, or reservations are implemented.
 
-Use Node.js 22.13+ (Node.js 24 is used in this cloud environment) and npm.
+## Run
+
+Node.js 22.13+ and npm are required.
 
 ```bash
-cd /workspace/Dukan
 npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
-The server uses port 3000. Open the root route for the storefront and `/admin` for the store manager. No environment variables, credentials, external services, or database are required. Fonts and product illustrations are served locally.
+Open `http://localhost:3000`. The catalogue uses six sample products. At `/admin`, the explicitly labeled development admin number is `+919999999999`; a random mock code appears after requesting sign-in. No SMS or WhatsApp message is sent by the mock providers. Change the pre-authorized identity and provider configuration before connecting real services.
 
-For a production build:
+Product and order data are stored in `.data/phase2.json`, a private, ignored local development file. Browser storage contains only the shopping bag. A new product starts with zero stock: set its count in `/admin/inventory` before accepting requests for it.
 
-```bash
-npm run build
-npm start
-```
+See [the Phase 2 guide](docs/phase2.md) for APIs, configuration, security boundaries, WhatsApp template instructions, and the Phase 3 database integration contract.
 
-Stop any server using port 3000 before starting another. The Next.js config permits the loopback hostname used by local tests. If using a development tunnel, add its exact hostname to `allowedDevOrigins` in `next.config.ts`.
-
-## Included
-
-- Responsive storefront with English/Hindi search, category filters, availability filtering, price/name sorting, product detail dialogs, and incremental catalogue loading.
-- Android-first layouts with 44 px touch targets, full-width quantity controls, a thumb-reachable bag shortcut, direct catalogue results while searching, and mobile admin product cards.
-- Bag drawer with quantities, removal, subtotal, empty states, and local persistence.
-- `/admin`: product/category/availability counts derived from the demo catalogue, quick actions, and a catalogue overview.
-- `/admin/products`: searchable, sortable, filterable, paginated table; add/edit form; availability switch; photo uploads or URLs; illustrated fallbacks; deletion confirmation.
-- `/admin/categories`: category summaries and links to filtered products.
-- `/admin/orders`: an explicit future-feature placeholder, without fabricated sales or orders.
-- `/admin/settings`: placeholder business details, demo scope, and confirmed demo reset.
-- Keyboard-accessible Radix dialogs, focus restoration, mobile menus, reduced-motion support, and live feedback.
-
-## Demo boundaries
-
-There are no backend APIs, database, authentication, payments, real ordering, delivery integration, WhatsApp ordering, notifications, or inventory synchronization. `/admin` is an **unsecured UI preview**, not a production admin system.
-
-Catalogue and bag state are shared by the storefront and admin through React context and optionally persisted in this browser’s `localStorage`, under `dukan-phase1-v1`. Other browsers and devices do not share the data. The demo remains usable in memory when browser storage is unavailable. Uploaded images are limited to 500 KB each to keep this local demo lightweight. Broken image URLs use the selected illustration instead.
-
-Reset original data through `/admin/settings`, or clear that localStorage key. Quantity controls support up to 99 bags per product in this demo. Marking a product unavailable or deleting it removes it from the demo bag. Price edits update the current bag subtotal.
-
-## Customise
-
-- `src/lib/store-config.ts`: temporary store name and contact/location placeholders.
-- `src/lib/products.ts`: product types, category definitions, seed products, and price formatting.
-- `src/components/store-provider.tsx`: the local data boundary to replace when a backend is introduced.
-- `src/components/product-art.tsx`: original product/hero illustrations and photo fallbacks.
-- `src/components/storefront/`: customer interactions and catalogue components.
-- `src/components/admin/`: store manager layout, dashboard, and forms.
-- `src/app/globals.css` and `src/styles/`: shared tokens, storefront/admin styles, and responsive layouts.
-
-No reference screenshot was included in the supplied files; the visual design follows the written brief.
-
-## Validation
+## Verify
 
 ```bash
 npm run typecheck
 npm run lint
-npm run format:check
+npm run test:unit
+npm test
 npm run build
 ```
 
-Browser tests cover catalogue interactions, cart totals and persistence, product management, availability and counts, image fallbacks, keyboard dialogs, mobile navigation, responsive overflow at 390/768/1440 px, and automated WCAG AA checks.
-
-An additional Android suite uses Pixel 7 touch emulation to check 320/360/393/412 px phones and 915 px landscape, shopping by touch, reachable bag controls, the mobile product editor, and mobile accessibility. Physical Android hardware has not been used for these automated checks.
-
-Install Playwright’s browser once on your machine, then run the tests:
-
-```bash
-npx playwright install chromium
-npm test
-```
-
-The cloud environment already has Chromium installed; use:
+The unit PDF assertions use Poppler's `pdftotext` and `pdffonts` commands (`poppler-utils` on Debian/Ubuntu). Install Chromium for Playwright with `npx playwright install chromium`, or use an installed browser:
 
 ```bash
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm test
 ```
 
-The test runner starts the dev server automatically, or reuses an existing server on port 3000 outside CI. It uses isolated browser contexts, so tests do not edit the catalogue in your own browser. Automated accessibility checks are a useful baseline, not a substitute for testing with assistive technology.
+The browser suite launches its own development server on port 3100 with isolated data at `work/browser-test-data.json`. It never edits `.data/phase2.json`. A production build is supported for validation; `npm start` deliberately cannot use development persistence or mock OTP. Connect the Phase 3 adapters before production operation.

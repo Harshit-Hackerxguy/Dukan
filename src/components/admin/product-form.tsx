@@ -12,7 +12,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { ProductImage } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
-import { categories, type Product } from "@/lib/products";
+import { type Product } from "@/lib/products";
 
 const blank: Product = {
   id: "",
@@ -36,9 +36,12 @@ export function ProductForm({
   product: Product | "new";
   onClose: () => void;
 }) {
-  const { saveProduct, storageAvailable } = useStore();
+  const { saveProduct, categories } = useStore();
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Product>(
-    product === "new" ? blank : { ...product },
+    product === "new"
+      ? { ...blank, category: categories[0]?.id || "rice" }
+      : { ...product },
   );
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -52,7 +55,7 @@ export function ProductForm({
       return;
     }
     if (file.size > 500 * 1024) {
-      setError("Choose an image smaller than 500 KB for this local demo.");
+      setError("Choose an image smaller than 500 KB.");
       return;
     }
     setError("");
@@ -68,7 +71,7 @@ export function ProductForm({
     };
     reader.readAsDataURL(file);
   };
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (
       !draft.name.trim() ||
@@ -84,7 +87,7 @@ export function ProductForm({
     }
     if (draft.image && !draft.image.startsWith("data:image/")) {
       try {
-        if (!["http:", "https:"].includes(new URL(draft.image).protocol))
+        if (!["https:"].includes(new URL(draft.image).protocol))
           throw new Error();
       } catch {
         setError(
@@ -93,15 +96,23 @@ export function ProductForm({
         return;
       }
     }
-    saveProduct({
-      ...draft,
-      id: product === "new" ? crypto.randomUUID() : draft.id,
-      name: draft.name.trim(),
-      hindiName: draft.hindiName.trim(),
-      description: draft.description.trim(),
-      image: draft.image.trim(),
-    });
-    onClose();
+    setSaving(true);
+    setError("");
+    try {
+      await saveProduct({
+        ...draft,
+        id: product === "new" ? crypto.randomUUID() : draft.id,
+        name: draft.name.trim(),
+        hindiName: draft.hindiName.trim(),
+        description: draft.description.trim(),
+        image: draft.image.trim(),
+      });
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <Modal
@@ -109,10 +120,10 @@ export function ProductForm({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={product === "new" ? "Add a little goodness" : "Edit product"}
+      title={product === "new" ? "Add product" : "Edit product"}
       description={
         product === "new"
-          ? "A new essential for your demo catalogue."
+          ? "Add a product, then set its stock in Inventory."
           : "Keep your product details looking their best."
       }
       className="product-form-dialog"
@@ -332,7 +343,7 @@ export function ProductForm({
               </select>
             </div>
             <div className="field">
-              <label htmlFor="product-tone">Packaging accent</label>
+              <label htmlFor="product-tone">Card accent</label>
               <select
                 id="product-tone"
                 value={draft.tone}
@@ -356,10 +367,7 @@ export function ProductForm({
             </p>
           )}
           <span className="form-demo-note">
-            <Info size={15} />{" "}
-            {storageAvailable
-              ? "Saved in this browser only"
-              : "Changes last for this visit only"}
+            <Info size={15} /> Product details do not change stock counts.
           </span>
           <div>
             <button
@@ -371,7 +379,7 @@ export function ProductForm({
             </button>
             <button
               type="submit"
-              disabled={uploading}
+              disabled={uploading || saving}
               className="button button-primary"
             >
               {product === "new" ? "Add product" : "Save changes"}

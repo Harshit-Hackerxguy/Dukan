@@ -19,22 +19,17 @@ import {
 import { ProductImage } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
 import { Modal } from "@/components/ui/modal";
-import {
-  categories,
-  categoryName,
-  formatPrice,
-  type Product,
-} from "@/lib/products";
+import { formatPrice, type Product } from "@/lib/products";
 import { useProductEditor } from "./admin-shell";
 
 export function Products() {
-  const { products, deleteProduct } = useStore();
+  const { products, categories, deleteProduct, notify } = useStore();
+  const categoryName = (id: string) =>
+    categories.find((c) => c.id === id)?.name || id;
   const edit = useProductEditor();
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") || "all";
-  const [category, setCategory] = useState(
-    categories.some((c) => c.id === initialCategory) ? initialCategory : "all",
-  );
+  const [category, setCategory] = useState(initialCategory);
   const [query, setQuery] = useState("");
   const [availability, setAvailability] = useState("all");
   const [sort, setSort] = useState("default");
@@ -108,7 +103,7 @@ export function Products() {
               Product catalogue{" "}
               <span className="result-number">{products.length}</span>
             </h2>
-            <p>Your local demo products, all in one place.</p>
+            <p>Product details and prices, all in one place.</p>
           </div>
           <span className="local-data-label">
             <span className="status-dot" /> LOCAL DEMO
@@ -393,7 +388,7 @@ export function Products() {
           <strong>Your catalogue, your way.</strong>
           <p>
             Click any product to edit its details. Changes appear in the
-            storefront and stay in this browser.
+            storefront. Stock is edited separately in Inventory.
           </p>
         </div>
       </div>
@@ -403,7 +398,7 @@ export function Products() {
           if (!open) setDeleting(null);
         }}
         title="Remove this essential?"
-        description="This changes your local demo catalogue only."
+        description="The product will be archived; existing orders are preserved."
         className="confirm-dialog"
       >
         <div className="confirm-body">
@@ -412,10 +407,10 @@ export function Products() {
           </div>
           <p>
             <strong>{deleting?.name}</strong> will be removed from the catalogue
-            and from any demo bag that contains it.
+            and can no longer be ordered.
           </p>
           <p className="small muted">
-            You can add it again, or restore the original catalogue in Settings.
+            This does not change recorded stock or existing cash memos.
           </p>
         </div>
         <div className="confirm-actions">
@@ -428,9 +423,13 @@ export function Products() {
           </button>
           <button
             className="button button-danger"
-            onClick={() => {
-              if (deleting) deleteProduct(deleting.id);
-              setDeleting(null);
+            onClick={async () => {
+              try {
+                if (deleting) await deleteProduct(deleting.id);
+                setDeleting(null);
+              } catch (e) {
+                notify((e as Error).message);
+              }
             }}
           >
             Delete product

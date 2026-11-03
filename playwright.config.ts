@@ -1,13 +1,12 @@
 import { defineConfig } from "@playwright/test";
-
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000";
-
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3100";
 export default defineConfig({
   testDir: "./tests",
-  fullyParallel: true,
-  workers: 2,
-  timeout: 45_000,
-  expect: { timeout: 10_000 },
+  testMatch: "**/*.spec.ts",
+  fullyParallel: false,
+  workers: 1,
+  timeout: 45000,
+  expect: { timeout: 10000 },
   reporter: "list",
   use: {
     baseURL,
@@ -19,10 +18,19 @@ export default defineConfig({
       : {},
   },
   webServer: {
-    command: "npm run dev",
+    command: "npm run dev -- --port 3100",
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    env: { NEXT_TELEMETRY_DISABLED: "1" },
+    reuseExistingServer: false,
+    timeout: 120000,
+    env: {
+      NEXT_TELEMETRY_DISABLED: "1",
+      DEV_DATA_FILE: "work/browser-test-data.json",
+      ADMIN_PHONE: "+919999999999",
+      ADMIN_OTP_PROVIDER: "mock",
+      ALLOW_DEV_OTP: "true",
+      WHATSAPP_PROVIDER: "mock",
+      WHATSAPP_APP_SECRET: "test-webhook-signing-secret",
+      WHATSAPP_WEBHOOK_VERIFY_TOKEN: "test-webhook-verify-token",
+    },
   },
 });

@@ -1,4 +1,10 @@
-export const categories = [
+export type Category = {
+  id: string;
+  name: string;
+  description: string;
+  illustration: Illustration;
+};
+export const categories: Category[] = [
   {
     id: "rice",
     name: "Rice & grains",
@@ -17,9 +23,9 @@ export const categories = [
     description: "Goodness from the ground",
     illustration: "potatoes",
   },
-] as const;
+];
 
-export type CategoryId = (typeof categories)[number]["id"];
+export type CategoryId = string;
 export type Illustration = "rice" | "sugar" | "potatoes";
 export type Product = {
   id: string;
@@ -137,7 +143,8 @@ export const formatPrice = (amount: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
   }).format(amount);
 export const formatUnitPrice = (amount: number) =>
   new Intl.NumberFormat("en-IN", {
