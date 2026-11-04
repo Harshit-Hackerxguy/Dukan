@@ -5,5 +5,4 @@ export const storeConfig = {
   location: "Store location to be added",
   hours: "Store hours to be added",
   contact: "Contact details coming soon",
-  isDemo: true,
 };

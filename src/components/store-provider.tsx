@@ -1,5 +1,4 @@
 "use client";
-
 import {
   createContext,
   useCallback,
@@ -10,170 +9,193 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { Check, X } from "lucide-react";
-import {
-  categories as seedCategories,
-  type Category,
-  type Product,
-} from "@/lib/products";
+import type { Product, Category } from "@/lib/products";
+import { storeConfig } from "@/lib/store-config";
 import { api } from "@/lib/api";
-
 type Cart = Record<string, number>;
-type StoreInfo = {
+type Settings = {
   name: string;
   contact: string;
   location: string;
   hours: string;
+  descriptor: string;
+};
+type Catalogue = {
+  products: Product[];
+  categories: Category[];
+  settings: Partial<Settings> | null;
 };
 type StoreContextType = {
   products: Product[];
   categories: Category[];
   cart: Cart;
-  storeInfo: StoreInfo;
   hydrated: boolean;
-  loading: boolean;
   error: string;
+  loading: boolean;
+  storeInfo: Settings;
+  settings: Settings;
   storageAvailable: boolean;
-  setQuantity: (id: string, quantity: number) => void;
+  setQuantity: (id: string, quantity: number) => Promise<void>;
   saveProduct: (product: Product) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   clearCart: () => void;
-  refresh: () => Promise<void>;
   notify: (message: string) => void;
+  refresh: () => Promise<void>;
+  categoryName: (id: string) => string;
 };
 const StoreContext = createContext<StoreContextType | null>(null);
-const STORAGE_KEY = "dukan-phase2-bag";
-
+const STORAGE_KEY = "dukan-bag-v3";
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const admin = usePathname().startsWith("/admin");
+  const pathname = usePathname();
+  const admin = /^\/admin(\/|$)/.test(pathname);
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState(seedCategories);
-  const [storeInfo, setStoreInfo] = useState<StoreInfo>({
-    name: "dukan",
-    contact: "",
-    location: "",
-    hours: "",
-  });
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [settings, setSettings] = useState<Settings>(storeConfig);
   const [cart, setCart] = useState<Cart>({});
   const [hydrated, setHydrated] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const requestId = useRef(0);
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [toast, setToast] = useState("");
-  const requestId = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quantityVersions = useRef<Record<string, number>>({});
   const notify = useCallback((message: string) => {
     if (timer.current) clearTimeout(timer.current);
     setToast(message);
     timer.current = setTimeout(() => setToast(""), 4500);
   }, []);
   const refresh = useCallback(async () => {
-    const id = ++requestId.current;
+    const request = ++requestId.current;
     setLoading(true);
-    setError("");
     try {
-      const data = await api<{
-        products: Product[];
-        categories: Category[];
-        store?: StoreInfo;
-      }>(admin ? "/api/admin/products" : "/api/catalogue");
-      if (id !== requestId.current) return;
+      const data = await api<Catalogue>(
+        admin ? "admin/catalogue" : "catalogue",
+      );
+      if (request !== requestId.current) return;
       setProducts(data.products);
-      setCategories(data.categories);
-      if (data.store) setStoreInfo(data.store);
-      if (!admin)
-        setCart((current) =>
-          Object.fromEntries(
-            Object.entries(current).filter(([id]) =>
-              data.products.some((p) => p.id === id && p.available),
-            ),
+      setCart((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([id]) =>
+            data.products.some((product) => product.id === id),
           ),
-        );
+        ),
+      );
+      setCategories(data.categories);
+      setSettings({ ...storeConfig, ...data.settings });
+      setError("");
     } catch (e) {
-      if (id === requestId.current) {
-        setError((e as Error).message);
+      if (request === requestId.current) {
+        setError(e instanceof Error ? e.message : "Could not load catalogue");
         setProducts([]);
       }
     } finally {
-      if (id === requestId.current) setLoading(false);
+      if (request === requestId.current) {
+        setHydrated(true);
+        setLoading(false);
+      }
     }
   }, [admin]);
-  // Synchronize remote data when switching between public and admin routes.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refresh();
-  }, [refresh]);
-  useEffect(() => {
-    const restored: Cart = {};
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      if (saved && typeof saved === "object")
-        for (const [id, q] of Object.entries(saved).slice(0, 500))
+    // Synchronize browser storage after hydration without changing the server snapshot.
+    queueMicrotask(() => {
+      try {
+        const saved = JSON.parse(
+          localStorage.getItem(STORAGE_KEY) ||
+            localStorage.getItem("dukan-phase2-bag") ||
+            "{}",
+        );
+        const restored: Cart = {};
+        for (const [id, quantity] of Object.entries(saved))
           if (
-            /^[a-zA-Z0-9-]+$/.test(id) &&
-            Number.isInteger(q) &&
-            Number(q) > 0
+            typeof quantity === "number" &&
+            Number.isInteger(quantity) &&
+            quantity > 0 &&
+            quantity <= 99
           )
-            restored[id] = Math.min(99, Number(q));
-    } catch {
-      /* Browser persistence is optional. */
-    }
-    // Browser storage can only be restored after hydration.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCart(restored);
-    setHydrated(true);
+            restored[id] = quantity;
+        setCart(restored);
+      } catch {
+        setStorageAvailable(false);
+      }
+      void refresh();
+    });
+    const onFocus = () => {
+      void refresh();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
+      window.removeEventListener("focus", onFocus);
       if (timer.current) clearTimeout(timer.current);
     };
-  }, []);
+  }, [refresh]);
   useEffect(() => {
     if (!hydrated) return;
-    // Report the external storage write outcome to the bag UI.
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setStorageAvailable(true);
     } catch {
-      setStorageAvailable(false);
+      queueMicrotask(() => setStorageAvailable(false));
     }
   }, [cart, hydrated]);
+  const setQuantity = async (id: string, quantity: number) => {
+    if (!Number.isInteger(quantity) || quantity < 0 || quantity > 99) return;
+    const version = (quantityVersions.current[id] || 0) + 1;
+    quantityVersions.current[id] = version;
+    if (quantity > 0) {
+      try {
+        const [result] = await api<{ available: boolean }[]>(
+          "availability",
+          "POST",
+          { items: [{ variantId: id, quantity }] },
+        );
+        if (!result?.available) {
+          notify("Requested quantity unavailable.");
+          return;
+        }
+      } catch (e) {
+        notify(e instanceof Error ? e.message : "Could not check availability");
+        return;
+      }
+    }
+    if (quantityVersions.current[id] !== version) return;
+    setCart((current) => {
+      const next = { ...current };
+      if (quantity) next[id] = quantity;
+      else delete next[id];
+      return next;
+    });
+  };
   return (
     <StoreContext.Provider
       value={{
         products,
         categories,
+        settings,
         cart,
-        storeInfo,
         hydrated,
-        loading,
         error,
+        loading,
+        storeInfo: settings,
         storageAvailable,
-        refresh,
         notify,
-        setQuantity: (id, value) => {
-          if (!products.some((p) => p.id === id && p.available) && value !== 0)
-            return;
-          setCart((current) => {
-            const next = { ...current };
-            const q = Math.min(99, Math.max(0, Math.floor(value)));
-            if (q) next[id] = q;
-            else delete next[id];
-            return next;
-          });
-        },
+        refresh,
+        setQuantity,
+        categoryName: (id) => categories.find((c) => c.id === id)?.name ?? id,
         saveProduct: async (product) => {
-          await api("/api/admin/products", {
-            method: "POST",
-            body: JSON.stringify(product),
-          });
+          await api("admin/products", "POST", product);
           await refresh();
-          notify("Product saved. Stock is managed separately in Inventory.");
+          notify("Product saved");
         },
         deleteProduct: async (id) => {
-          await api(`/api/admin/products/${encodeURIComponent(id)}`, {
-            method: "DELETE",
-          });
-          await refresh();
-          notify("Product archived. Existing order records are preserved.");
+          try {
+            await api(`admin/products/${id}`, "DELETE");
+            await refresh();
+            notify("Product archived");
+          } catch (e) {
+            notify(
+              e instanceof Error ? e.message : "Could not archive product",
+            );
+          }
         },
         clearCart: () => setCart({}),
       }}

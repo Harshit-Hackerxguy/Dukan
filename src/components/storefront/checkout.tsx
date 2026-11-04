@@ -24,7 +24,11 @@ const statusText: Record<string, string> = {
   sent: "The WhatsApp notification was sent. Delivery is not yet confirmed.",
   delivered: "The order memo was delivered to the store’s WhatsApp.",
   read: "The order memo was delivered and marked read on the store’s WhatsApp.",
-  pending: "Your request was saved. The WhatsApp notification is pending.",
+  submitted:
+    "The WhatsApp provider accepted the notification. Delivery is not yet confirmed.",
+  uncertain:
+    "Your request was saved. The store will check the delivery outcome before retrying.",
+  pending: "Your request was saved. The WhatsApp notification is queued.",
   sending:
     "Your request was saved. The WhatsApp notification is being processed.",
 };
@@ -35,7 +39,7 @@ export function Checkout({
   onBack: () => void;
   onBusy: (busy: boolean) => void;
 }) {
-  const { products, cart, clearCart } = useStore();
+  const { products, cart, clearCart, refresh } = useStore();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,7 +49,11 @@ export function Checkout({
   const submitting = useRef(false);
   const items = products
     .filter((p) => cart[p.id])
-    .map((p) => ({ productId: p.id, quantity: cart[p.id] }));
+    .map((p) => ({
+      variantId: p.id,
+      quantity: cart[p.id],
+      expectedPricePaise: Math.round(p.price * 100),
+    }));
   const total = products.reduce(
     (sum, p) => sum + p.price * (cart[p.id] || 0),
     0,
@@ -87,10 +95,8 @@ export function Checkout({
       } catch {
         /* In-memory retry protection remains. */
       }
-      const result = await api<Receipt>("/api/checkout", {
-        method: "POST",
-        body: JSON.stringify(payload),
-        headers: { "Idempotency-Key": pending.current!.key },
+      const result = await api<Receipt>("checkout", "POST", payload, {
+        "Idempotency-Key": pending.current!.key,
       });
       setReceipt(result);
       clearCart();
@@ -101,6 +107,7 @@ export function Checkout({
       }
     } catch (e) {
       setError((e as Error).message);
+      await refresh();
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -116,7 +123,8 @@ export function Checkout({
         <strong>{formatPrice(receipt.totalPaise / 100)}</strong>
         <p>{receipt.message}</p>
         <p className="delivery-note">
-          {statusText[receipt.whatsappStatus] || statusText.pending}
+          {statusText[receipt.whatsappStatus.toLowerCase()] ||
+            statusText.pending}
         </p>
         <p>This request does not confirm payment.</p>
         <button className="button button-primary full-width" onClick={onBack}>

@@ -2,23 +2,30 @@ import PDFDocument from "pdfkit";
 import { resolve } from "node:path";
 import type { Order } from "../domain";
 
+export type CashMemoDocument = Pick<
+  Order,
+  "memoNumber" | "createdAt" | "items" | "totalPaise"
+> & {
+  customer: Pick<Order["customer"], "name" | "phone">;
+  store: Pick<Order["store"], "contact" | "location">;
+};
 export class CashMemoService {
-  async generate(order: Order): Promise<Buffer> {
+  async generate(order: CashMemoDocument): Promise<Buffer> {
     const doc = new PDFDocument({
       size: "A4",
       margin: 38,
       bufferPages: true,
       autoFirstPage: true,
-      font: resolve("public/fonts/NotoSans-Regular.ttf"),
+      font: resolve("assets/fonts/NotoSans-Regular.ttf"),
       info: {
         Title: `CASH MEMO ${order.memoNumber}`,
         Author: "Sanjay Store",
       },
     });
-    doc.registerFont("Latin", resolve("public/fonts/NotoSans-Regular.ttf"));
+    doc.registerFont("Latin", resolve("assets/fonts/NotoSans-Regular.ttf"));
     doc.registerFont(
       "Hindi",
-      resolve("public/fonts/NotoSansDevanagari-Regular.ttf"),
+      resolve("assets/fonts/NotoSansDevanagari-Regular.ttf"),
     );
     const parts: Buffer[] = [];
     const complete = new Promise<Buffer>((accept, reject) => {

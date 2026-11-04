@@ -1,127 +1,151 @@
-# Dukan — wholesale grocery ordering
+# Dukan — wholesale store, Phase 3
 
-A wholesale grocery ordering app for Indian stores, built with Next.js, React, and TypeScript. Customers browse products, add bags, and submit an order request using only their name and mobile number. Store owners manage their catalogue, manually update stock, and review printable cash memos with WhatsApp notification status.
+PostgreSQL-backed catalogue, manual inventory, guest order requests, private cash memo PDFs, admin OTP sign-in, and a durable WhatsApp delivery queue. This branch combines the latest Phase 2 customer design, checkout, and Sanjay Store cash memo renderer with Phase 3 permanent database records.
 
-The responsive storefront retains its green, cream, and white palette, with English/Hindi product names and prices in Indian rupees.
+## Business rules
 
-**Current stage: Phase 2 development.** The ordering workflow, admin interface, PDF generation, and provider adapters are implemented. Permanent PostgreSQL storage is planned for Phase 3; the development datastore is blocked in production. Mock OTP and WhatsApp providers send no real messages.
+- **Only explicit admin stock edits change inventory.** Checkout, PDFs, WhatsApp delivery, and order status updates never deduct or reserve stock.
+- Public catalogue responses contain availability flags, never exact quantities. Quantities are checked when adding to a bag and again at checkout.
+- Guest customers provide only name and mobile number. Numbers are normalized to E.164 but remain unverified. Matching a phone links requests; it grants no access to history.
+- Orders preserve product, package, customer, price, and total snapshots. Cash memo bytes are immutable. Completed means explicitly marked completed by an admin, not electronic payment.
+- No payment gateways, customer accounts, reservations, daily summaries, or timed reports.
 
-[Implementation guide](docs/phase2.md) · [Validation report](docs/validation.md) · [Environment template](.env.example)
+## Local setup
 
-## Features
-
-| Area               | Included                                                                                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Customer catalogue | Search in English/Hindi, category and availability filters, sorting, package sizes, compact product cards, and photo fallbacks                    |
-| Shopping bag       | Persistent bag, quantity controls, prices per bag, line totals, removal, and grand total                                                          |
-| Guest checkout     | Name and +91 mobile number only, server-side price and availability validation, duplicate-request protection, and rate limiting                   |
-| Cash memo PDFs     | Unique reference, customer and product snapshots, Asia/Kolkata timestamps, Hindi and rupee fonts, pagination, and order-request disclaimers       |
-| WhatsApp           | Development mock, official Cloud API adapter, document templates, signed delivery webhooks, guarded retries, and manual PDF sharing               |
-| Admin access       | Pre-authorized phone identity, OTP provider abstraction, Twilio Verify adapter, and server-authorized sessions                                    |
-| Store management   | Dashboard, product/category editing, product archiving, manual stock adjustments with history, order statuses, memo downloads, and store settings |
-
-### Inventory stays under the store's control
-
-Order submissions and changes to order status **never reduce or reserve stock**. Only an explicit admin stock adjustment changes the recorded count. Customers see availability without exact stock quantities. New products start with zero stock and become orderable after an admin records their count.
-
-An order request does not confirm payment or final availability. There are no online payments, customer accounts, or customer OTP requirements.
-
-## Quick start
-
-Use Node.js **22.13 or later** and npm.
+Requires Node.js 22.13+ and PostgreSQL 16+. Use npm and a persistent PostgreSQL database.
 
 ```bash
-git clone https://github.com/Harshit-Hackerxguy/Dukan.git
-cd Dukan
+cp .env.example .env
+# Edit DATABASE_URL, APP_ORIGIN, ADMIN_PHONE, and WHATSAPP_RECIPIENT.
 npm ci
-cp .env.example .env.local
+npm run db:generate
+npm run db:migrate
+npm run db:seed
 npm run dev
+# In a second process, using the same environment:
+npm run worker
 ```
 
-Open [localhost:3000](http://localhost:3000) for the storefront or [localhost:3000/admin](http://localhost:3000/admin) for store management. The initial catalogue contains six sample products, including 30 kg and 50 kg rice bags, sugar, and potatoes.
+Open `APP_ORIGIN` exactly as configured (including hostname and port). `/` is the storefront; `/admin` redirects unauthenticated users to `/admin-login`. The seed supplies six demo products with 100 packages each, with explicit development adjustment records. Seed runs are additive and do not overwrite prices or stock. **Do not use development stock in a real store.** New products created through the admin UI start at zero until an explicit stock edit.
 
-With the example environment, the development admin number is `+919999999999`. Request a sign-in code to display a random development OTP, then enter it to sign in. This is a labeled mock flow; no SMS is sent. Real OTP requires a configured provider and the store's actual pre-authorized admin number.
+For local testing only, `.env` can set `ALLOW_TEST_AUTH=true` and a six-digit `TEST_OTP`. The bypass is ignored when `NODE_ENV=production`. Never enable it on a shared development server or reuse development sessions/database in production. No OTP bypass is exposed by an API.
 
-Product, inventory, order, and session data are stored locally in `.data/phase2.json`. This ignored development file survives local restarts but is unsuitable for production or multiple server instances. The browser stores the shopping bag separately. Keep `.env.local` and development customer data out of version control.
+Prisma uses its JavaScript query compiler with the PostgreSQL driver. The optional `PRISMA_CLI_JS=true` setting selects Prisma 6's experimental bundled WASM tooling for **development schema generation** when native downloads are blocked. Leave it unset in normal deployment environments. `npm run db:migrate` uses the stable PostgreSQL driver directly and does not depend on that experimental migration engine.
 
-## Store management
+## Schema and migrations
 
-| Route               | Purpose                                                                   |
-| ------------------- | ------------------------------------------------------------------------- |
-| `/`                 | Customer catalogue and order submission                                   |
-| `/admin`            | Product/category counts, pending requests, and out-of-stock products      |
-| `/admin/products`   | Add, edit, price, photograph, and archive products                        |
-| `/admin/categories` | Organize catalogue categories                                             |
-| `/admin/inventory`  | View exact counts, make bulk stock adjustments, and review history        |
-| `/admin/orders`     | Review requests, update status, download memos, and check WhatsApp status |
-| `/admin/settings`   | Edit store details and configure the WhatsApp recipient and consent       |
+`prisma/schema.prisma` defines admins/sessions/challenges, categories, products and independently stocked variants, inventory balances and adjustments, guest customers, immutable order items, cash memos, delivery attempts, outbox jobs, settings, audit logs, and persistent rate-limit buckets.
 
-Admin APIs and PDF downloads verify the session on the server. Customer checkout remains available without an account.
+Money is stored as integer paise. Foreign keys preserve historical associations; archival replaces product deletion. PostgreSQL checks enforce valid stock and line amounts. Each stock edit checks a version number; stale edits reject the entire bulk transaction. Serializable transactions retry transient serialization conflicts.
 
-## Provider configuration
+`npm run db:migrate` applies ordered SQL migration files in a transaction, serializes runners using an advisory lock, verifies applied checksums, and records Prisma-compatible `_prisma_migrations` history. It refuses changed/incomplete migrations and never resets a database. Keep applied SQL immutable; add a forward migration for subsequent changes. Review future migrations for commands that cannot run inside a transaction. Do not run native Prisma migrations and this runner concurrently (their lock keys differ).
 
-Copy [`.env.example`](.env.example) to `.env.local` for local development. Provider credentials stay on the server.
+The initial migration includes explicit SQL constraints beyond Prisma's schema representation. Preserve them in later migrations. To create a subsequent schema migration in a development environment with native Prisma tooling, use `prisma migrate dev --create-only`, review its SQL, then apply using `npm run db:migrate`. Do not run `migrate reset` on existing data.
 
-| Integration | Development default                                             | Real provider setup                                                                                                          |
-| ----------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Admin OTP   | `ADMIN_OTP_PROVIDER=mock` with `ALLOW_DEV_OTP=true`             | Set the authorized `ADMIN_PHONE`, use `ADMIN_OTP_PROVIDER=twilio`, disable the mock, and configure Twilio Verify credentials |
-| WhatsApp    | `WHATSAPP_PROVIDER=mock`; records a mock action without sending | Use `WHATSAPP_PROVIDER=cloud` with the sender phone-number ID, access token, approved document template, and webhook secrets |
-
-The WhatsApp API sender, the admin's sign-in identity, and the recipient number are configured separately. Set the recipient and record consent in authenticated Settings. A recipient number alone cannot enable automatic sending.
-
-The UI distinguishes mock actions, provider acceptance, confirmed delivery, failures, and unknown outcomes. Manual sharing does not claim tracked delivery. Live WhatsApp and SMS delivery require real provider configuration and have not been verified with live credentials.
-
-See the [WhatsApp setup instructions](docs/phase2.md#whatsapp-development-and-live-configuration), [admin authentication guide](docs/phase2.md#admin-authentication), and [complete environment-variable reference](docs/phase2.md#environment-variables).
-
-## Architecture
-
-| Layer          | Implementation                                                                                                               |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Application    | Next.js 16 App Router, React 19, TypeScript, and Tailwind CSS 4                                                              |
-| UI             | Radix dialogs, Lucide icons, local fonts, and responsive storefront/admin styles                                             |
-| Backend        | Next.js route handlers, Zod validation, and modular checkout, product, inventory, authentication, PDF, and WhatsApp services |
-| PDF generation | PDFKit with bundled Noto Sans and Noto Sans Devanagari fonts                                                                 |
-| Persistence    | Development file adapter and isolated in-memory test adapter behind repository/unit-of-work contracts                        |
-| Testing        | Node.js service tests, Playwright browser tests, and axe accessibility checks                                                |
-
-```text
-src/app/                  Customer/admin routes and backend APIs
-src/components/           Storefront, bag, checkout, and admin components
-src/server/services/      Ordering, inventory, PDF, provider, and auth logic
-src/server/repositories/  Repository contracts and development adapters
-src/server/container.ts   Service and repository wiring
-public/fonts/             PDF/Hindi fonts and their license
-tests/                    Service, browser, and Android-layout checks
-docs/                     Implementation details and validation results
-```
-
-## Validation
-
-The PDF assertions require Poppler's `pdftotext` and `pdffonts` commands (`poppler-utils` on Debian/Ubuntu). Install a Playwright browser before running browser tests:
+Production bootstrap creates only the admin and store settings, without demo products or stock:
 
 ```bash
-npx playwright install chromium
+npm run db:migrate
+npm run db:bootstrap
+npm run build
+npm start
+# Supervise separately with systemd, a container service, or a process manager:
+npm run worker
 ```
 
+Keep `assets/fonts/` in deployment artifacts; Next.js output tracing includes the Noto font files used for English/Hindi PDFs. Their license is included. A persistent Node.js worker is required for queue processing; merely serving Next.js does not send queued messages. `npm run worker:once` processes one eligible job for diagnostics.
+
+## Admin OTP and security configuration
+
+Configure Twilio Verify:
+
+1. Create an SMS-enabled Verify service and configure `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID` on the server.
+2. Set `ADMIN_PHONE` to the authorized number in E.164 format and run `npm run db:bootstrap`.
+3. Set `APP_ORIGIN` to the exact HTTPS production origin. Confirm SMS delivery and verification with the real admin number.
+4. Keep test auth disabled. Sessions last eight hours; only token hashes are stored. Cookies are HttpOnly, SameSite=Strict, and Secure in production. Sign-out revokes the session.
+
+OTP requests and verification attempts are rate limited in PostgreSQL. Challenges expire after five minutes and allow at most five guesses. Important admin operations are audited. Every admin API checks authorization server-side; the admin layout also checks it. Mutations require an exact Origin match. API responses containing personal data and private PDFs are not cached.
+
+`TRUST_PROXY=false` uses conservative shared rate limits. Set it to true **only** behind a reverse proxy that strips client-supplied `X-Forwarded-For` and writes the actual address. Configure HTTPS, request-body limits, and network access to PostgreSQL at deployment. Use a dedicated runtime database user with only required table/sequence permissions, and a separate migration identity. Do not expose database credentials or provider secrets through `NEXT_PUBLIC_*` variables.
+
+Changing the WhatsApp recipient in Settings requires a fresh OTP for the existing authorized admin. Already recorded memos keep their original recipient. To rotate the admin identity, a trusted operator must update `ADMIN_PHONE` in protected server configuration and run:
+
 ```bash
+npm run db:bootstrap -- --rotate-admin
+```
+
+This disables prior admins, revokes their sessions, and records an audit event. Restart web/worker processes with the updated configuration. Configure and test OTP access for the new number before ending the operator's recovery access.
+
+## WhatsApp setup and delivery behavior
+
+The implementation uses Meta's WhatsApp Cloud API:
+
+1. Configure a business phone number and server-side `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and a supported `WHATSAPP_API_VERSION`.
+2. Create and obtain approval for a template with **one document header and no body parameters**. Set its name in `WHATSAPP_TEMPLATE` and language in `WHATSAPP_TEMPLATE_LANGUAGE`.
+3. Obtain the recipient's WhatsApp consent, configure the admin recipient, and verify template delivery under your Meta account's restrictions.
+4. Configure the webhook callback as `https://your-origin/api/webhooks/whatsapp`, with `WHATSAPP_VERIFY_TOKEN` and the Meta app's `WHATSAPP_APP_SECRET`. Subscribe to message statuses. POST payloads are authenticated with HMAC-SHA256 over the original body.
+5. Run `npm run worker` continuously and monitor failures and queue age. The worker uploads the PDF as private provider media; no public PDF URL is needed.
+
+Checkout commits the order, PDF, and outbox job together. A provider failure cannot undo the order. Workers claim jobs with `FOR UPDATE SKIP LOCKED`; retries never create new orders. A successful send response means **submitted**, not delivered. Signed callbacks advance sent/delivered states without accepting older statuses as regressions. Attempts retain recipient, timestamp, provider message ID, response status/error summary, and error information; access tokens are never logged.
+
+Known pre-send upload failures and explicit throttling can retry with capped exponential backoff (five attempts). Timeouts/5xx at message submission, or a worker crash during delivery, leave an **uncertain** record instead of automatically risking a duplicate. An admin must check WhatsApp/provider records and explicitly acknowledge the duplicate risk before retrying. The provider does not offer an end-to-end exactly-once guarantee. Delayed callbacks are correlated using the attempt ID in `biz_opaque_callback_data`.
+
+## Private cash memos and backups
+
+PDFs are stored as PostgreSQL `bytea`, referenced by `db:cashMemo/<id>`. This keeps the PDF and order in one transaction and one backup. Only authenticated admin routes stream previews/downloads; guessing an ID or knowing a customer's phone never grants access. Document status is READY once checkout commits. English and Hindi use bundled Noto fonts, and original text remains in database snapshots.
+
+Use encrypted database backups and restrict operator access. With credentials supplied through a protected PostgreSQL service file or `.pgpass` (not committed or printed):
+
+```bash
+# Custom-format backup includes schema, stock, audit trail, orders, and PDFs.
+pg_dump --dbname=service=dukan --format=custom --file=dukan-backup.dump
+# Restore into a NEW empty database. Never use --clean against the live database.
+createdb --maintenance-db=service=dukan-maintenance dukan_restore_check
+pg_restore --dbname=service=dukan-restore --exit-on-error --single-transaction dukan-backup.dump
+```
+
+Define `dukan-restore` to point to that new database. Verify row counts, representative memo previews, and stock adjustment history before any planned switchover. Keep the restored worker stopped to avoid re-sending old pending jobs. Reconcile outbox state before enabling delivery. Revoke restored sessions if the backup may be old. For production recovery objectives, configure provider-managed point-in-time recovery/WAL archival, documented retention, and periodic restore drills. No destructive resets are part of setup or backup procedures.
+
+Expired `RateLimit`, `OtpChallenge`, and `AdminSession` records can be removed by a trusted maintenance task after their expiry. Preserve orders, memos, stock adjustments, and audit history according to the store's retention policy. Backup storage grows with PDF volume.
+
+## Verification
+
+```bash
+npm run test:unit
 npm run typecheck
 npm run lint
 npm run format:check
-npm run test:unit
-npm test
-npm run build
+NEXT_TELEMETRY_DISABLED=1 npm run build
 ```
 
-For an existing Chromium installation:
+The memo unit tests require the Poppler `pdftotext` and `pdffonts` command-line tools (usually supplied by `poppler-utils`).
+
+Use separate test databases. Tests refuse ordinary development/production database names and never reset databases:
 
 ```bash
+# Create a fresh database whose name ends in _test, then set DATABASE_URL to it.
+npm run db:migrate
+npm run test:integration
+
+# Create another database whose name ends in _e2e, then set DATABASE_URL to it.
+# Use APP_ORIGIN=http://127.0.0.1:3000 and the test-only admin/OTP values.
+npm run db:migrate
+npm run db:seed
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm test
 ```
 
-The browser suite starts a dedicated development server on port `3100` and uses `work/browser-test-data.json`. It leaves the local store data in `.data/phase2.json` untouched. Tests cover checkout validation, server totals, PDFs, messaging adapters, stock invariants, admin authorization, responsive layouts, and automated accessibility checks. Recorded results are in the [validation report](docs/validation.md).
+Install Chromium with `npx playwright install chromium` if needed. Browser tests use an isolated admin session fixture and separately exercise the OTP UI, unauthorized APIs, private PDFs, checkout, inventory, mobile layouts, and accessibility. Test data is retained in its isolated database; use a fresh test database for a clean suite run, or archive prior test products explicitly. Do not point a running dev server at a different database from the test runner.
 
-## Phase 3: permanent storage
+Integration tests cover product/variant CRUD, manual adjustments, multi-row rollback, concurrent stock edits, hidden public quantities, price revalidation, concurrent idempotent checkout, PDF generation, historical snapshots, unchanged stock after checkout/status/delivery, failure/retry records, signed webhook transitions, repeat guest records, new-process persistence, OTP restrictions/expiry/reuse, and archival.
 
-The app supports a production build for validation, but the development persistence adapter refuses production runtime requests and mock OTP is disabled in production. Connecting real messaging credentials does not remove this storage requirement.
+Live Twilio SMS and Meta WhatsApp calls have not been verified without real credentials. Production deployment, provider permissions, webhook reachability, HTTPS configuration, and a production backup/restore drill must be configured and verified before treating this as a live service.
 
-Phase 3 will connect PostgreSQL through the repository/unit-of-work boundary and provide durable transactions, memo/idempotency constraints, concurrency-safe messaging claims, persistent authentication and rate limits, PDF storage, and backup/retention policies. See the [database integration notes](docs/phase2.md#temporary-storage-and-phase-3) before deploying a live store.
+## Integration with Phase 2
+
+The latest Phase 2 changes are included in this branch: the compact storefront, plain sack illustrations, two-step checkout, shipping disclaimer, and centered Sanjay Store cash memo with its 11-point line-item table, bilingual fonts, pagination, and repeated table headers. The existing `CashMemoService` renders directly from database snapshots.
+
+The temporary synchronous file repositories and their development routes are replaced by explicit asynchronous PostgreSQL queries in `src/server/catalogue.ts`, `orders.ts`, `auth.ts`, and `delivery.ts`, sharing the serializable transaction boundary in `db.ts`. This is the deliberate asynchronous contract migration described in the Phase 2 notes; the JSON adapter is no longer used by an application route. Existing `.data/` files are left untouched. Review and migrate any real Phase 2 development records separately before selecting a live database.
+
+Existing server configurations can still use the Phase 2 names `SITE_ORIGIN`, `TRUST_PROXY_IP`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, and `WHATSAPP_WEBHOOK_VERIFY_TOKEN`; the corresponding Phase 3 variable takes precedence when both are set. If `WHATSAPP_PROVIDER` is set, use `cloud` for real sends or `disabled` to stop delivery. Old development OTP and WhatsApp mock flags do not enable production bypasses. Use the documented Phase 3 test-only flags for isolated local testing.
+
+`docs/phase2.md` and `docs/validation.md` are historical records. The setup and verification commands in this README describe the current PostgreSQL application. `npm run test:unit` verifies the preserved memo layout, currency, fonts, and multi-page rendering without a database.

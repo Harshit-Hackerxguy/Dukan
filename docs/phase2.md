@@ -1,3 +1,5 @@
+> Historical Phase 2 notes. The application now uses PostgreSQL; see the root README for current setup and validation.
+
 # Phase 2 implementation guide
 
 ## What changed

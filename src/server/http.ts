@@ -1,14 +1,22 @@
-import { ZodError } from "zod";
-import { cookies } from "next/headers";
-import { AppError } from "./errors";
-import { auth } from "./container";
-import { SESSION_COOKIE } from "./services/admin-auth-service";
-
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { db } from "./db";
+import { appOrigin, trustProxy } from "./config";
+export class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export const json = (data: unknown, status = 200) =>
   Response.json(data, {
     status,
     headers: {
-      "Cache-Control": "no-store, private",
+      "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
     },
   });
@@ -16,90 +24,85 @@ export async function handle(fn: () => Promise<Response>) {
   try {
     return await fn();
   } catch (e) {
-    if (e instanceof AppError)
-      return json({ error: e.message, code: e.code }, e.status);
-    if (e instanceof ZodError)
+    if (e instanceof HttpError) return json({ error: e.message }, e.status);
+    if (e instanceof z.ZodError)
+      return json({ error: e.issues.map((i) => i.message).join(". ") }, 400);
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      ["P2002", "P2034", "P2003", "P2025"].includes(e.code)
+    )
       return json(
         {
-          error: "Please check the form fields and quantities.",
-          code: "INVALID_INPUT",
-          fields: e.issues.map((i) => ({
-            path: i.path.join("."),
-            message: i.message,
-          })),
+          error:
+            "The record changed or conflicts with existing data. Refresh and try again.",
         },
-        400,
+        409,
       );
-    // Never expose provider payloads, stack traces, customer data, or credentials.
     console.error(
       "Request failed",
       e instanceof Error ? e.name : "UnknownError",
     );
     return json(
-      {
-        error: "The request could not be completed. Please try again.",
-        code: "INTERNAL_ERROR",
-      },
-      500,
+      { error: "The service is temporarily unavailable. Please try again." },
+      503,
     );
   }
 }
-export function sameOrigin(request: Request) {
-  // Next may normalize request.url to localhost behind its dev server. The
-  // browser Origin must match the actual incoming Host, never Forwarded headers.
-  const url = new URL(request.url);
-  const host = request.headers.get("host") || url.host;
-  const origin = process.env.SITE_ORIGIN || `${url.protocol}//${host}`;
-  if (
-    request.headers.get("origin") !== origin ||
-    request.headers.get("sec-fetch-site") === "cross-site"
-  )
-    throw new AppError(
-      403,
-      "INVALID_ORIGIN",
-      "Please submit this request from the store website.",
-    );
+export function sameOrigin(req: Request) {
+  const expected = appOrigin();
+  if (!expected)
+    throw new HttpError(503, "Application origin is not configured");
+  if (req.headers.get("origin") !== new URL(expected).origin)
+    throw new HttpError(403, "Request origin is not allowed");
 }
-export async function readText(request: Request, max = 800000) {
-  if (Number(request.headers.get("content-length")) > max)
-    throw new AppError(413, "BODY_TOO_LARGE", "The request is too large.");
-  const reader = request.body?.getReader();
-  if (!reader)
-    throw new AppError(400, "INVALID_BODY", "A request body is required.");
-  let size = 0;
+export async function readBody(req: Request, maxBytes = 800000) {
+  const reader = req.body?.getReader();
+  if (!reader) throw new HttpError(400, "Request body required");
   const chunks: Uint8Array[] = [];
+  let size = 0;
   while (true) {
-    const { value, done } = await reader.read();
+    const { done, value } = await reader.read();
     if (done) break;
     size += value.length;
-    if (size > max) {
+    if (size > maxBytes) {
       await reader.cancel();
-      throw new AppError(413, "BODY_TOO_LARGE", "The request is too large.");
+      throw new HttpError(413, "Request too large");
     }
     chunks.push(value);
   }
   return Buffer.concat(chunks).toString("utf8");
 }
-export async function body(request: Request) {
-  sameOrigin(request);
-  if (!request.headers.get("content-type")?.startsWith("application/json"))
-    throw new AppError(415, "JSON_REQUIRED", "Use a JSON request.");
+export async function body(req: Request) {
+  if (!req.headers.get("content-type")?.startsWith("application/json"))
+    throw new HttpError(415, "JSON required");
+  const text = await readBody(req);
   try {
-    return JSON.parse(await readText(request));
-  } catch (e) {
-    if (e instanceof AppError) throw e;
-    throw new AppError(400, "INVALID_JSON", "The request could not be read.");
+    return JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "Invalid JSON");
   }
 }
-export const requireAdmin = async () =>
-  auth.authenticate((await cookies()).get(SESSION_COOKIE)?.value);
-export function clientKey(request: Request) {
-  // Only enable behind a trusted reverse proxy that overwrites this header.
-  return process.env.TRUST_PROXY_IP === "true"
-    ? request.headers
-        .get("x-forwarded-for")
-        ?.split(",")[0]
-        .trim()
-        .slice(0, 80) || "shared"
-    : "shared";
+export async function rateLimit(
+  scope: string,
+  identifier: string,
+  limit: number,
+  seconds: number,
+) {
+  const now = Date.now();
+  const key = hash(
+    `${scope}:${identifier}:${Math.floor(now / (seconds * 1000))}`,
+  );
+  const entry = await db.rateLimit.upsert({
+    where: { key },
+    create: { key, expiresAt: new Date(now + seconds * 2000) },
+    update: { count: { increment: 1 } },
+  });
+  if (entry.count > limit)
+    throw new HttpError(429, "Too many attempts. Please try again later.");
+}
+export function clientKey(req: Request) {
+  // Only enable after the reverse proxy strips client-supplied forwarding headers.
+  return trustProxy()
+    ? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "global"
+    : "global";
 }

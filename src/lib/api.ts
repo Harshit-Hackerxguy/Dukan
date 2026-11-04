@@ -1,17 +1,19 @@
 export async function api<T>(
-  url: string,
-  options: RequestInit = {},
+  path: string,
+  method = "GET",
+  data?: unknown,
+  headers?: Record<string, string>,
 ): Promise<T> {
-  const response = await fetch(url, {
-    ...options,
+  const response = await fetch(`/api/${path}`, {
+    method,
     headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
+      ...(data !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...headers,
     },
+    body: data !== undefined ? JSON.stringify(data) : undefined,
     cache: "no-store",
   });
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(data.error || "The request could not be completed.");
-  return data as T;
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Request failed");
+  return result as T;
 }

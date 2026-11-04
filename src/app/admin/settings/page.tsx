@@ -1,4 +1,4 @@
-import { SettingsPreview } from "@/components/admin/future-pages";
-export default function SettingsPage() {
-  return <SettingsPreview />;
+import { Settings } from "@/components/admin/records";
+export default function Page() {
+  return <Settings />;
 }

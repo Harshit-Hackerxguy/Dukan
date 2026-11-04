@@ -23,13 +23,13 @@ import { formatPrice, type Product } from "@/lib/products";
 import { useProductEditor } from "./admin-shell";
 
 export function Products() {
-  const { products, categories, deleteProduct, notify } = useStore();
-  const categoryName = (id: string) =>
-    categories.find((c) => c.id === id)?.name || id;
+  const { products, deleteProduct, categories, categoryName } = useStore();
   const edit = useProductEditor();
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") || "all";
-  const [category, setCategory] = useState(initialCategory);
+  const [category, setCategory] = useState(
+    categories.some((c) => c.id === initialCategory) ? initialCategory : "all",
+  );
   const [query, setQuery] = useState("");
   const [availability, setAvailability] = useState("all");
   const [sort, setSort] = useState("default");
@@ -103,10 +103,10 @@ export function Products() {
               Product catalogue{" "}
               <span className="result-number">{products.length}</span>
             </h2>
-            <p>Product details and prices, all in one place.</p>
+            <p>Your products, prices, and package sizes.</p>
           </div>
           <span className="local-data-label">
-            <span className="status-dot" /> LOCAL DEMO
+            <span className="status-dot" /> CATALOGUE
           </span>
         </div>
         <div className="admin-table-toolbar">
@@ -388,7 +388,7 @@ export function Products() {
           <strong>Your catalogue, your way.</strong>
           <p>
             Click any product to edit its details. Changes appear in the
-            storefront. Stock is edited separately in Inventory.
+            storefront and stay in this browser.
           </p>
         </div>
       </div>
@@ -398,7 +398,7 @@ export function Products() {
           if (!open) setDeleting(null);
         }}
         title="Remove this essential?"
-        description="The product will be archived; existing orders are preserved."
+        description="This hides the package from the catalogue. Past orders and memos stay intact."
         className="confirm-dialog"
       >
         <div className="confirm-body">
@@ -407,10 +407,10 @@ export function Products() {
           </div>
           <p>
             <strong>{deleting?.name}</strong> will be removed from the catalogue
-            and can no longer be ordered.
+            and will no longer accept new requests.
           </p>
           <p className="small muted">
-            This does not change recorded stock or existing cash memos.
+            Historical stock adjustments and order records will be preserved.
           </p>
         </div>
         <div className="confirm-actions">
@@ -423,16 +423,12 @@ export function Products() {
           </button>
           <button
             className="button button-danger"
-            onClick={async () => {
-              try {
-                if (deleting) await deleteProduct(deleting.id);
-                setDeleting(null);
-              } catch (e) {
-                notify((e as Error).message);
-              }
+            onClick={() => {
+              if (deleting) deleteProduct(deleting.id);
+              setDeleting(null);
             }}
           >
-            Delete product
+            Archive product
           </button>
         </div>
       </Modal>

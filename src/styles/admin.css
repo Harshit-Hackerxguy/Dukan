@@ -1710,3 +1710,105 @@
   max-width: 350px;
   margin-bottom: 25px;
 }
+
+/* Database-backed manager screens share the existing store visual language. */
+.record-panel {
+  padding: 24px;
+  margin-bottom: 22px;
+}
+.record-panel h2 {
+  margin-bottom: 12px;
+}
+.record-panel p {
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 0;
+}
+.record-actions > div:first-child {
+  flex: 1;
+}
+.record-actions input,
+.record-form input,
+.record-form select,
+.record-actions select,
+.record-table input,
+.record-table select {
+  border: 1px solid #d3ddd5;
+  border-radius: 8px;
+  padding: 11px;
+  background: #fff;
+  color: #253b31;
+  max-width: 100%;
+}
+.record-form {
+  display: grid;
+  gap: 20px;
+  padding: 28px;
+  max-width: 720px;
+}
+.record-form label,
+.record-actions label {
+  display: grid;
+  gap: 8px;
+}
+.record-form input {
+  width: 100%;
+}
+.record-table-scroll {
+  overflow-x: auto;
+}
+.record-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.record-table th,
+.record-table td {
+  padding: 14px 10px;
+  border-bottom: 1px solid #e5eae5;
+}
+.record-table th {
+  font-size: 12px;
+  color: #4e6659;
+}
+.record-table small {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #58665e;
+}
+.record-table input {
+  width: 140px;
+}
+.login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #f5f5ee;
+}
+.login-page form {
+  width: min(100%, 460px);
+}
+@media (max-width: 600px) {
+  .record-panel,
+  .record-form {
+    padding: 16px;
+  }
+  .record-table {
+    min-width: 600px;
+  }
+  .record-actions {
+    align-items: stretch;
+  }
+}
+
+.package-selector {
+  padding: 20px 28px 0;
+}

@@ -10,5 +10,6 @@ playwright-report/
 .DS_Store
 next-env.d.ts
 
-.data/
 work/
+
+.data/

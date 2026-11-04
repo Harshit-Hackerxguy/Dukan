@@ -13,7 +13,7 @@ export function ProductCard({
   product: Product;
   onDetails: (product: Product) => void;
 }) {
-  const { cart, setQuantity, notify } = useStore();
+  const { cart, setQuantity } = useStore();
   return (
     <article
       className={`product-card ${!p.available ? "product-unavailable" : ""}`}
@@ -59,7 +59,6 @@ export function ProductCard({
               aria-label={`Add ${p.name} to bag`}
               onClick={() => {
                 setQuantity(p.id, 1);
-                notify(`${p.name} added to your bag`);
               }}
             >
               ADD <Plus size={16} />

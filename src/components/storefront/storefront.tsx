@@ -379,10 +379,7 @@ export function Storefront() {
           </div>
           <div className="price-note">
             <span className="preview-label">A LITTLE HEADS-UP</span>
-            <p>
-              This is our demo catalogue. Sample products and prices are used
-              until the store has configured its catalogue.
-            </p>
+            <p>Product availability is subject to confirmation by the store.</p>
           </div>
         </section>
         <section className="ordering-help container" id="about">
@@ -554,7 +551,7 @@ export function Storefront() {
                 >
                   <span className="status-dot" />
                   {selected.available
-                    ? "Available in demo"
+                    ? "Available to request"
                     : "Currently unavailable"}
                 </span>
               </div>
@@ -577,7 +574,6 @@ export function Storefront() {
                     className="button button-primary"
                     onClick={() => {
                       setQuantity(selected.id, 1);
-                      notify(`${selected.name} added to your bag`);
                     }}
                   >
                     Add to bag <ShoppingBag size={17} />
@@ -589,7 +585,7 @@ export function Storefront() {
                 </button>
               )}
               <small className="detail-disclaimer">
-                Demo price. No orders or payments are collected.
+                Product availability is subject to confirmation by the store.
               </small>
             </div>
           </div>

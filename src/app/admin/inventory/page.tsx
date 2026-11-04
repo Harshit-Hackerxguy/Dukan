@@ -1,4 +1,4 @@
-import { Inventory } from "@/components/admin/inventory";
-export default function InventoryPage() {
+import { Inventory } from "@/components/admin/records";
+export default function Page() {
   return <Inventory />;
 }

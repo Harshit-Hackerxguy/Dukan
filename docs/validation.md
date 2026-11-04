@@ -1,3 +1,5 @@
+> Historical Phase 2 notes. The application now uses PostgreSQL; see the root README for current setup and validation.
+
 # Phase 2 validation
 
 Verified on 3 November 2026 in the supplied cloud development workspace.
