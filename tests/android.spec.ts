@@ -21,6 +21,8 @@ for (const viewport of [
       "/admin/categories",
       "/admin/orders",
       "/admin/settings",
+      "/admin/inventory",
+      "/admin/customers",
     ]) {
       await page.goto(route);
       await expect(page.locator("h1")).toHaveCount(1);
@@ -64,6 +66,7 @@ test("Android shoppers can search, adjust quantities, and use the thumb-reachabl
     name: "Increase Regular Rice quantity",
     exact: true,
   });
+  await expect(increase).toBeVisible();
   const increaseBox = await increase.boundingBox();
   expect(increaseBox!.width).toBeGreaterThanOrEqual(44);
   expect(increaseBox!.height).toBeGreaterThanOrEqual(44);
@@ -120,6 +123,15 @@ test("Android admin uses readable product cards and a touch-friendly editor", as
   await expect(page.locator(".mobile-admin-product").first()).toContainText(
     "White Sugar",
   );
+  await page
+    .getByRole("button", { name: "Edit Regular Rice", exact: true })
+    .tap();
+  await page.getByRole("dialog").getByLabel("Price per bag").fill("1000");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Save changes" })
+    .tap();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "Open admin navigation" }).tap();
   await page
     .getByRole("dialog")

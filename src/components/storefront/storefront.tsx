@@ -32,21 +32,24 @@ import {
 } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
 import { Modal } from "@/components/ui/modal";
-import {
-  categories,
-  categoryName,
-  formatPrice,
-  formatUnitPrice,
-  type Product,
-} from "@/lib/products";
-import { storeConfig } from "@/lib/store-config";
+import { formatPrice, formatUnitPrice, type Product } from "@/lib/products";
 import { Cart, QuantityControl } from "./cart";
 import { ProductCard } from "./product-card";
 
 type Sort = "featured" | "price-asc" | "price-desc" | "name";
 
 export function Storefront() {
-  const { products, cart, setQuantity, notify } = useStore();
+  const {
+    products,
+    categories,
+    categoryName,
+    settings: storeConfig,
+    cart,
+    setQuantity,
+    notify,
+    error,
+    hydrated,
+  } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<Sort>("featured");
@@ -77,7 +80,7 @@ export function Storefront() {
     if (sort === "price-desc") result.sort((a, b) => b.price - a.price);
     if (sort === "name") result.sort((a, b) => a.name.localeCompare(b.name));
     return result;
-  }, [products, category, query, sort, inStock]);
+  }, [products, category, query, sort, inStock, categoryName]);
   const resetFilters = () => {
     setQuery("");
     setCategory("all");
@@ -98,6 +101,13 @@ export function Storefront() {
     <div
       className={`storefront ${count ? "storefront-has-bag" : ""} ${query.trim() ? "storefront-searching" : ""}`}
     >
+      {error && (
+        <p className="storage-notice" role="alert">
+          {error}{" "}
+          <button onClick={() => window.location.reload()}>Retry</button>
+        </p>
+      )}
+      {!hydrated && <p role="status">Loading catalogue…</p>}
       <a className="skip-link" href="#catalogue">
         Skip to products
       </a>
@@ -107,7 +117,7 @@ export function Storefront() {
             <Package size={14} /> Everyday essentials. Wholesale value.
           </span>
           <span className="announcement-demo">
-            <span className="status-dot" /> Phase 1 preview <i /> Demo prices
+            <span className="status-dot" /> Your local wholesale store
           </span>
         </div>
       </div>
@@ -418,10 +428,7 @@ export function Storefront() {
           </div>
           <div className="price-note">
             <span className="preview-label">A LITTLE HEADS-UP</span>
-            <p>
-              This is our demo catalogue. All prices, availability, and
-              packaging are for preview purposes.
-            </p>
+            <p>Product availability is subject to confirmation by the store.</p>
           </div>
         </section>
         <section className="about-section" id="about">
@@ -484,9 +491,7 @@ export function Storefront() {
               <br />
               Wholesale, made simple.
             </p>
-            <span className="footer-demo">
-              Temporary branding · Phase 1 demo
-            </span>
+            <span className="footer-demo">Wholesale, made simple</span>
           </div>
           <div>
             <h3>Explore the store</h3>
@@ -523,14 +528,14 @@ export function Storefront() {
               For now, explore and make yourself at home.
             </p>
             <Link href="/admin">
-              Explore the admin demo <ArrowUpRight size={14} />
+              Store manager <ArrowUpRight size={14} />
             </Link>
           </div>
         </div>
         <div className="container footer-bottom">
           <span>
             © {new Date().getFullYear()} {storeConfig.name}. A wholesale store
-            UI preview.
+            for everyday essentials.
           </span>
           <span>
             Made for the everyday. <Leaf size={13} />
@@ -593,11 +598,11 @@ export function Storefront() {
             About the store <ArrowRight size={17} />
           </a>
           <Link href="/admin">
-            Admin demo <ArrowUpRight size={17} />
+            Store manager <ArrowUpRight size={17} />
           </Link>
         </nav>
         <p className="muted small">
-          Phase 1 preview · Demo catalogue and prices
+          Product availability is subject to confirmation by the store.
         </p>
       </Modal>
       <Modal
@@ -629,9 +634,7 @@ export function Storefront() {
                   className={selected.available ? "available-text" : "muted"}
                 >
                   <span className="status-dot" />
-                  {selected.available
-                    ? "Available in demo"
-                    : "Currently unavailable"}
+                  {selected.available ? "Available to request" : "Out of stock"}
                 </span>
               </div>
               <div className="detail-price">
@@ -653,7 +656,6 @@ export function Storefront() {
                     className="button button-primary"
                     onClick={() => {
                       setQuantity(selected.id, 1);
-                      notify(`${selected.name} added to your bag`);
                     }}
                   >
                     Add to bag <ShoppingBag size={17} />
@@ -661,11 +663,11 @@ export function Storefront() {
                 )
               ) : (
                 <button className="button button-secondary" disabled>
-                  Currently unavailable
+                  Out of stock
                 </button>
               )}
               <small className="detail-disclaimer">
-                Demo price. No orders or payments are collected.
+                Product availability is subject to confirmation by the store.
               </small>
             </div>
           </div>

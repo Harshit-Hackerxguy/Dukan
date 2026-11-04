@@ -1,8 +1,10 @@
+"use client";
 import Link from "next/link";
 import { Wheat } from "lucide-react";
-import { storeConfig } from "@/lib/store-config";
+import { useStore } from "@/components/store-provider";
 
 export function Brand({ admin = false }: { admin?: boolean }) {
+  const { settings: storeConfig } = useStore();
   return (
     <Link
       href={admin ? "/admin" : "/"}

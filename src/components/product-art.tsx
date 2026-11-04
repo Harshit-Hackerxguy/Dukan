@@ -342,7 +342,7 @@ export function ProductImage({
 }) {
   const [failedUrl, setFailedUrl] = useState("");
   if (product.image && product.image !== failedUrl) {
-    // Custom demo images are intentionally local/browser-rendered and need no image API.
+    // Product images render in the browser with an illustrated fallback.
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img

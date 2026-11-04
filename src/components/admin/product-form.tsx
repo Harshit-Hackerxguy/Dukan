@@ -12,7 +12,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { ProductImage } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
-import { categories, type Product } from "@/lib/products";
+import { type Product } from "@/lib/products";
 
 const blank: Product = {
   id: "",
@@ -36,12 +36,16 @@ export function ProductForm({
   product: Product | "new";
   onClose: () => void;
 }) {
-  const { saveProduct, storageAvailable } = useStore();
+  const { saveProduct, categories, products } = useStore();
   const [draft, setDraft] = useState<Product>(
-    product === "new" ? blank : { ...product },
+    product === "new"
+      ? { ...blank, category: categories[0]?.id || "" }
+      : { ...product },
   );
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const newId = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const update = <K extends keyof Product>(key: K, value: Product[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -52,7 +56,7 @@ export function ProductForm({
       return;
     }
     if (file.size > 500 * 1024) {
-      setError("Choose an image smaller than 500 KB for this local demo.");
+      setError("Choose an image smaller than 500 KB.");
       return;
     }
     setError("");
@@ -68,8 +72,9 @@ export function ProductForm({
     };
     reader.readAsDataURL(file);
   };
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
     if (
       !draft.name.trim() ||
       draft.price <= 0 ||
@@ -84,8 +89,7 @@ export function ProductForm({
     }
     if (draft.image && !draft.image.startsWith("data:image/")) {
       try {
-        if (!["http:", "https:"].includes(new URL(draft.image).protocol))
-          throw new Error();
+        if (new URL(draft.image).protocol !== "https:") throw new Error();
       } catch {
         setError(
           "Use a full https:// image URL, upload a photo, or leave the field empty.",
@@ -93,15 +97,25 @@ export function ProductForm({
         return;
       }
     }
-    saveProduct({
-      ...draft,
-      id: product === "new" ? crypto.randomUUID() : draft.id,
-      name: draft.name.trim(),
-      hindiName: draft.hindiName.trim(),
-      description: draft.description.trim(),
-      image: draft.image.trim(),
-    });
-    onClose();
+    setSaving(true);
+    try {
+      await saveProduct({
+        ...draft,
+        id:
+          product === "new"
+            ? (newId.current ??= crypto.randomUUID())
+            : draft.id,
+        name: draft.name.trim(),
+        hindiName: draft.hindiName.trim(),
+        description: draft.description.trim(),
+        image: draft.image.trim(),
+      });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save product");
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <Modal
@@ -112,12 +126,52 @@ export function ProductForm({
       title={product === "new" ? "Add a little goodness" : "Edit product"}
       description={
         product === "new"
-          ? "A new essential for your demo catalogue."
+          ? "A new essential for your catalogue."
           : "Keep your product details looking their best."
       }
       className="product-form-dialog"
     >
       <form onSubmit={submit} className="product-form">
+        {product === "new" && (
+          <div className="field package-selector">
+            <label htmlFor="parent-product">
+              Package of existing product (optional)
+            </label>
+            <select
+              id="parent-product"
+              value={draft.productId || ""}
+              onChange={(e) => {
+                const parent = products.find(
+                  (p) => p.productId === e.target.value,
+                );
+                setDraft((current) =>
+                  parent
+                    ? {
+                        ...current,
+                        productId: parent.productId,
+                        name: parent.name,
+                        hindiName: parent.hindiName,
+                        description: parent.description,
+                        category: parent.category,
+                      }
+                    : { ...current, productId: undefined },
+                );
+              }}
+            >
+              <option value="">New product</option>
+              {products
+                .filter(
+                  (p, i, all) =>
+                    all.findIndex((x) => x.productId === p.productId) === i,
+                )
+                .map((p) => (
+                  <option key={p.id} value={p.productId}>
+                    {p.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
         <div className="product-form-body">
           <div className="form-main">
             <div className="form-section-heading">
@@ -132,6 +186,7 @@ export function ProductForm({
               </label>
               <input
                 id="product-name"
+                disabled={product === "new" && !!draft.productId}
                 required
                 maxLength={100}
                 placeholder="e.g. Premium Rice"
@@ -146,6 +201,7 @@ export function ProductForm({
               </label>
               <input
                 id="hindi-name"
+                disabled={product === "new" && !!draft.productId}
                 lang="hi"
                 maxLength={100}
                 placeholder="जैसे प्रीमियम चावल"
@@ -159,6 +215,8 @@ export function ProductForm({
               </label>
               <select
                 id="product-category"
+                required
+                disabled={product === "new" && !!draft.productId}
                 value={draft.category}
                 onChange={(e) => {
                   const category = e.target.value as Product["category"];
@@ -174,6 +232,9 @@ export function ProductForm({
                   }));
                 }}
               >
+                <option value="" disabled>
+                  Choose a category
+                </option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -221,9 +282,9 @@ export function ProductForm({
                     id="product-price"
                     type="number"
                     required
-                    min="1"
-                    max="10000000"
-                    step="1"
+                    min="0.01"
+                    max="1000000"
+                    step="0.01"
                     value={draft.price || ""}
                     onChange={(e) => update("price", Number(e.target.value))}
                     placeholder="1,200"
@@ -237,6 +298,7 @@ export function ProductForm({
               </label>
               <textarea
                 id="product-description"
+                disabled={product === "new" && !!draft.productId}
                 rows={3}
                 maxLength={1000}
                 placeholder="Tell customers a little about this product…"
@@ -247,7 +309,7 @@ export function ProductForm({
             <label className="availability-field">
               <div>
                 <strong>Available in catalogue</strong>
-                <span>Customers can add this product to their bag.</span>
+                <span>Allow requests when recorded stock is available.</span>
               </div>
               <input
                 type="checkbox"
@@ -281,7 +343,7 @@ export function ProductForm({
             <button
               className="upload-button"
               type="button"
-              disabled={uploading}
+              disabled={uploading || saving}
               onClick={() => fileInput.current?.click()}
             >
               {uploading ? (
@@ -356,10 +418,7 @@ export function ProductForm({
             </p>
           )}
           <span className="form-demo-note">
-            <Info size={15} />{" "}
-            {storageAvailable
-              ? "Saved in this browser only"
-              : "Changes last for this visit only"}
+            <Info size={15} /> Saved securely for your store
           </span>
           <div>
             <button
@@ -371,7 +430,7 @@ export function ProductForm({
             </button>
             <button
               type="submit"
-              disabled={uploading}
+              disabled={uploading || saving}
               className="button button-primary"
             >
               {product === "new" ? "Add product" : "Save changes"}

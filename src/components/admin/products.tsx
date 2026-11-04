@@ -19,16 +19,11 @@ import {
 import { ProductImage } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
 import { Modal } from "@/components/ui/modal";
-import {
-  categories,
-  categoryName,
-  formatPrice,
-  type Product,
-} from "@/lib/products";
+import { formatPrice, type Product } from "@/lib/products";
 import { useProductEditor } from "./admin-shell";
 
 export function Products() {
-  const { products, deleteProduct } = useStore();
+  const { products, deleteProduct, categories, categoryName } = useStore();
   const edit = useProductEditor();
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") || "all";
@@ -108,10 +103,10 @@ export function Products() {
               Product catalogue{" "}
               <span className="result-number">{products.length}</span>
             </h2>
-            <p>Your local demo products, all in one place.</p>
+            <p>Your products, prices, and package sizes.</p>
           </div>
           <span className="local-data-label">
-            <span className="status-dot" /> LOCAL DEMO
+            <span className="status-dot" /> CATALOGUE
           </span>
         </div>
         <div className="admin-table-toolbar">
@@ -403,7 +398,7 @@ export function Products() {
           if (!open) setDeleting(null);
         }}
         title="Remove this essential?"
-        description="This changes your local demo catalogue only."
+        description="This hides the package from the catalogue. Past orders and memos stay intact."
         className="confirm-dialog"
       >
         <div className="confirm-body">
@@ -412,10 +407,10 @@ export function Products() {
           </div>
           <p>
             <strong>{deleting?.name}</strong> will be removed from the catalogue
-            and from any demo bag that contains it.
+            and will no longer accept new requests.
           </p>
           <p className="small muted">
-            You can add it again, or restore the original catalogue in Settings.
+            Historical stock adjustments and order records will be preserved.
           </p>
         </div>
         <div className="confirm-actions">
@@ -433,7 +428,7 @@ export function Products() {
               setDeleting(null);
             }}
           >
-            Delete product
+            Archive product
           </button>
         </div>
       </Modal>

@@ -1,4 +1,4 @@
-import { OrdersPreview } from "@/components/admin/future-pages";
-export default function OrdersPage() {
-  return <OrdersPreview />;
+import { Orders } from "@/components/admin/records";
+export default function Page() {
+  return <Orders />;
 }

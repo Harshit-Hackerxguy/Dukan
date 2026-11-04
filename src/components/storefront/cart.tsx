@@ -1,14 +1,8 @@
 "use client";
 
-import {
-  ArrowLeft,
-  ArrowRight,
-  Info,
-  Minus,
-  Plus,
-  ShoppingBag,
-  Trash2,
-} from "lucide-react";
+import { useState } from "react";
+import { Checkout } from "./checkout";
+import { ArrowLeft, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { useStore } from "@/components/store-provider";
 import { ProductImage } from "@/components/product-art";
 import { Modal } from "@/components/ui/modal";
@@ -60,6 +54,7 @@ export function Cart({
 }) {
   const { products, cart, setQuantity, clearCart, notify, storageAvailable } =
     useStore();
+  const [receipt, setReceipt] = useState("");
   const items = products.filter((p) => cart[p.id]);
   const count = items.reduce((sum, p) => sum + cart[p.id], 0);
   const total = items.reduce((sum, p) => sum + p.price * cart[p.id], 0);
@@ -71,7 +66,25 @@ export function Cart({
       description={`${count} ${count === 1 ? "bag" : "bags"} of everyday goodness`}
       className="cart-dialog"
     >
-      {items.length ? (
+      {receipt ? (
+        <div className="record-panel" role="status">
+          <h3>Order request received.</h3>
+          <p>Cash memo: {receipt}</p>
+          <p>
+            Your request is saved and the cash memo is queued for the store’s
+            WhatsApp. Availability is subject to store confirmation.
+          </p>
+          <button
+            className="button button-primary"
+            onClick={() => {
+              setReceipt("");
+              onOpenChange(false);
+            }}
+          >
+            Continue shopping
+          </button>
+        </div>
+      ) : items.length ? (
         <>
           <div className="cart-note">
             <ShoppingBag size={16} />
@@ -133,23 +146,7 @@ export function Cart({
               </span>
               <strong>{formatPrice(total)}</strong>
             </div>
-            <p>Demo catalogue prices. Delivery and taxes are not calculated.</p>
-            <div className="demo-callout">
-              <Info size={18} />
-              <div>
-                <strong>Just a little preview for now</strong>
-                <p>
-                  You can explore products and build your bag. Ordering and
-                  payments will be available in a future phase.
-                </p>
-              </div>
-            </div>
-            <button
-              className="button button-primary full-width"
-              onClick={() => onOpenChange(false)}
-            >
-              Keep exploring <ArrowRight size={17} />
-            </button>
+            <Checkout onSuccess={setReceipt} />
           </div>
         </>
       ) : (

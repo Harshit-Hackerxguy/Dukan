@@ -3,12 +3,7 @@
 import { ArrowUpRight, Plus } from "lucide-react";
 import { ProductImage } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
-import {
-  categoryName,
-  formatPrice,
-  formatUnitPrice,
-  type Product,
-} from "@/lib/products";
+import { formatPrice, formatUnitPrice, type Product } from "@/lib/products";
 import { QuantityControl } from "./cart";
 
 export function ProductCard({
@@ -18,7 +13,7 @@ export function ProductCard({
   product: Product;
   onDetails: (product: Product) => void;
 }) {
-  const { cart, setQuantity, notify } = useStore();
+  const { cart, setQuantity, categoryName } = useStore();
   return (
     <article
       className={`product-card ${!p.available ? "product-unavailable" : ""}`}
@@ -59,7 +54,7 @@ export function ProductCard({
             </span>
           </div>
           {!p.available ? (
-            <span className="sold-out-label">Unavailable</span>
+            <span className="sold-out-label">Out of stock</span>
           ) : cart[p.id] ? (
             <QuantityControl id={p.id} name={p.name} quantity={cart[p.id]} />
           ) : (
@@ -68,7 +63,6 @@ export function ProductCard({
               aria-label={`Add ${p.name} to bag`}
               onClick={() => {
                 setQuantity(p.id, 1);
-                notify(`${p.name} added to your bag`);
               }}
             >
               ADD <Plus size={16} />

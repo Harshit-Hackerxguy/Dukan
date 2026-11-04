@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const config: NextConfig = {
+  outputFileTracingIncludes: { "/*": ["./assets/fonts/*.ttf"] },
   // Permit the loopback hostname used by local browser tests and development.
   allowedDevOrigins: ["127.0.0.1"],
 };

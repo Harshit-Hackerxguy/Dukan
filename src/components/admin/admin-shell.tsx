@@ -2,14 +2,13 @@
 
 import { createContext, useContext, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   ChevronRight,
   CircleHelp,
   LayoutDashboard,
-  Info,
   Leaf,
   Menu,
   Package,
@@ -21,7 +20,7 @@ import {
 } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { Modal } from "@/components/ui/modal";
-import { useStore } from "@/components/store-provider";
+import { api } from "@/lib/api";
 import { ProductForm } from "./product-form";
 import type { Product } from "@/lib/products";
 
@@ -29,8 +28,10 @@ const nav = [
   { href: "/admin", name: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/products", name: "Products", icon: Package },
   { href: "/admin/categories", name: "Categories", icon: Tags },
-  { href: "/admin/orders", name: "Orders", icon: ShoppingBag, future: true },
-  { href: "/admin/settings", name: "Settings", icon: Settings2, future: true },
+  { href: "/admin/inventory", name: "Inventory", icon: Package },
+  { href: "/admin/customers", name: "Customers", icon: ShoppingBag },
+  { href: "/admin/orders", name: "Orders", icon: ShoppingBag },
+  { href: "/admin/settings", name: "Settings", icon: Settings2 },
 ];
 const EditorContext = createContext<(product: Product | "new") => void>(
   () => {},
@@ -55,7 +56,7 @@ function AdminNavigation({
         </span>
         <div>
           <strong>Your wholesale store</strong>
-          <small>Local demo workspace</small>
+          <small>Store workspace</small>
         </div>
         <ChevronRight size={14} />
       </div>
@@ -71,9 +72,6 @@ function AdminNavigation({
           >
             <item.icon size={19} strokeWidth={1.7} />
             <span>{item.name}</span>
-            {item.future && (
-              <span className="soon-dot" title="Future feature" />
-            )}
           </Link>
         ))}
       </nav>
@@ -88,7 +86,7 @@ function AdminNavigation({
           <ArrowUpRight size={15} />
         </Link>
         <div className="sidebar-preview">
-          <ShieldAlert size={14} /> Unsecured UI preview
+          <ShieldAlert size={14} /> Authorized admin access
         </div>
       </div>
     </>
@@ -96,8 +94,8 @@ function AdminNavigation({
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const { storageAvailable } = useStore();
   const pathname = usePathname();
+  const router = useRouter();
   const [editor, setEditor] = useState<Product | "new" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const current =
@@ -127,36 +125,37 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
             <div>
               <span className="demo-pill">
-                <span className="status-dot" /> Demo mode
+                <span className="status-dot" /> Admin
               </span>
               <Link
                 href="/admin/settings"
                 className="admin-help icon-button"
-                aria-label="About this demo"
+                aria-label="Store settings"
               >
                 <CircleHelp size={19} />
               </Link>
-              <span className="admin-avatar" title="Demo workspace">
+              <button
+                className="text-button"
+                onClick={async () => {
+                  await api("auth/logout", "POST", {});
+                  router.push("/admin-login");
+                  router.refresh();
+                }}
+              >
+                Sign out
+              </button>
+              <span className="admin-avatar" title="Admin workspace">
                 D
               </span>
             </div>
           </header>
           <main id="admin-main" className="admin-main">
-            {!storageAvailable && (
-              <div className="storage-notice" role="status">
-                <Info size={17} />
-                <span>
-                  Your browser’s storage is unavailable or full. Changes will
-                  last for this visit only.
-                </span>
-              </div>
-            )}
             {children}
           </main>
           <footer className="admin-footer">
             <span>A little more organised. A lot more effortless.</span>
             <span>
-              <Leaf size={13} /> Phase 1 · Local demo
+              <Leaf size={13} /> Manual stock management
             </span>
           </footer>
         </div>

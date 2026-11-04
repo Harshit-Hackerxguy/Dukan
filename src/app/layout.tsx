@@ -14,7 +14,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: `${storeConfig.name} — Wholesale, made simple`,
   description:
-    "A local demo catalogue of rice, sugar, and fresh produce. Everyday essentials, in wholesale quantities.",
+    "Rice, sugar, and fresh produce from your local store. Everyday essentials, in wholesale quantities.",
 };
 
 export const viewport: Viewport = {
@@ -27,7 +27,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <StoreProvider>{children}</StoreProvider>
       </body>
