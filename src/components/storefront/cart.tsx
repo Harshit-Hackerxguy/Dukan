@@ -1,8 +1,15 @@
 "use client";
 
+import {
+  ArrowLeft,
+  ArrowRight,
+  Minus,
+  Plus,
+  ShoppingBag,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import { Checkout } from "./checkout";
-import { ArrowLeft, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { useStore } from "@/components/store-provider";
 import { ProductImage } from "@/components/product-art";
 import { Modal } from "@/components/ui/modal";
@@ -54,41 +61,37 @@ export function Cart({
 }) {
   const { products, cart, setQuantity, clearCart, notify, storageAvailable } =
     useStore();
-  const [receipt, setReceipt] = useState("");
+  const [checkout, setCheckout] = useState(false);
+  const [busy, setBusy] = useState(false);
   const items = products.filter((p) => cart[p.id]);
   const count = items.reduce((sum, p) => sum + cart[p.id], 0);
   const total = items.reduce((sum, p) => sum + p.price * cart[p.id], 0);
   return (
     <Modal
       open={open}
-      onOpenChange={onOpenChange}
-      title="Your bag"
+      onOpenChange={(value) => {
+        if (!busy) {
+          onOpenChange(value);
+          if (!value) setCheckout(false);
+        }
+      }}
+      title={checkout ? "Your order request" : "Your bag"}
       description={`${count} ${count === 1 ? "bag" : "bags"} of everyday goodness`}
       className="cart-dialog"
     >
-      {receipt ? (
-        <div className="record-panel" role="status">
-          <h3>Order request received.</h3>
-          <p>Cash memo: {receipt}</p>
-          <p>
-            Your request is saved and the cash memo is queued for the store’s
-            WhatsApp. Availability is subject to store confirmation.
-          </p>
-          <button
-            className="button button-primary"
-            onClick={() => {
-              setReceipt("");
-              onOpenChange(false);
-            }}
-          >
-            Continue shopping
-          </button>
-        </div>
+      {checkout ? (
+        <Checkout
+          onBusy={setBusy}
+          onBack={() => {
+            setCheckout(false);
+            if (!items.length) onOpenChange(false);
+          }}
+        />
       ) : items.length ? (
         <>
           <div className="cart-note">
             <ShoppingBag size={16} />
-            <span>A little planning. A well-stocked kitchen.</span>
+            <span>Wholesale essentials, ready for your request.</span>
           </div>
           <div className="cart-items">
             {items.map((p) => (
@@ -99,7 +102,7 @@ export function Cart({
                 <div className="cart-item-info">
                   <h3>{p.name}</h3>
                   <p>
-                    {p.weight} {p.unit} / bag
+                    {p.weight} {p.unit} / bag · {formatPrice(p.price)} each
                   </p>
                   <QuantityControl
                     id={p.id}
@@ -139,14 +142,20 @@ export function Cart({
             )}
             <div className="summary-line">
               <span>
-                Subtotal{" "}
+                Grand total{" "}
                 <small>
                   ({count} {count === 1 ? "bag" : "bags"})
                 </small>
               </span>
               <strong>{formatPrice(total)}</strong>
             </div>
-            <Checkout onSuccess={setReceipt} />
+            <p>Shipping charges may vary and will be confirmed by the store.</p>
+            <button
+              className="button button-primary full-width"
+              onClick={() => setCheckout(true)}
+            >
+              Submit Order <ArrowRight size={17} />
+            </button>
           </div>
         </>
       ) : (

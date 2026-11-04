@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { DeliveryStatus, Prisma } from "@prisma/client";
 import { transaction } from "./db";
 import { HttpError } from "./http";
+import { whatsappToken, whatsappTemplate } from "./config";
 class ProviderError extends Error {
   constructor(
     message: string,
@@ -18,12 +19,15 @@ async function sendDocument(
   recipient: string,
   attemptId: string,
 ) {
-  const {
-    WHATSAPP_TOKEN: token,
-    WHATSAPP_PHONE_NUMBER_ID: phoneId,
-    WHATSAPP_TEMPLATE: template,
-    WHATSAPP_API_VERSION: version,
-  } = process.env;
+  const { WHATSAPP_PHONE_NUMBER_ID: phoneId, WHATSAPP_API_VERSION: version } =
+    process.env;
+  const token = whatsappToken(),
+    template = whatsappTemplate();
+  if (
+    process.env.WHATSAPP_PROVIDER &&
+    process.env.WHATSAPP_PROVIDER !== "cloud"
+  )
+    throw new ProviderError("WhatsApp provider is disabled", false);
   if (!token || !phoneId || !template || !version)
     throw new ProviderError("WhatsApp provider is not configured", false);
   const base = `https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(phoneId)}`;

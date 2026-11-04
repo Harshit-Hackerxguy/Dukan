@@ -117,10 +117,17 @@ test("checkout creates private memo and completion keeps inventory unchanged", a
     .getByRole("button", { name: "Open bag, 1 item", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Your name").fill("Browser customer");
+  await dialog
+    .getByRole("button", { name: "Submit Order", exact: true })
+    .click();
+  await dialog.getByLabel("Customer name").fill("Browser customer");
   await dialog.getByLabel("Mobile number").fill("9876543215");
-  await dialog.getByRole("button", { name: "Submit order request" }).click();
-  await expect(dialog.getByText("Order request received.")).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Submit Order", exact: true })
+    .click();
+  await expect(
+    dialog.getByText("Order request recorded", { exact: true }),
+  ).toBeVisible();
   const orders = await (
     await request.get("/api/admin/orders?search=Browser%20customer")
   ).json();

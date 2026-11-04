@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
+import { appOrigin, trustProxy } from "./config";
 export class HttpError extends Error {
   constructor(
     public status: number,
@@ -48,7 +49,7 @@ export async function handle(fn: () => Promise<Response>) {
   }
 }
 export function sameOrigin(req: Request) {
-  const expected = process.env.APP_ORIGIN;
+  const expected = appOrigin();
   if (!expected)
     throw new HttpError(503, "Application origin is not configured");
   if (req.headers.get("origin") !== new URL(expected).origin)
@@ -101,7 +102,7 @@ export async function rateLimit(
 }
 export function clientKey(req: Request) {
   // Only enable after the reverse proxy strips client-supplied forwarding headers.
-  return process.env.TRUST_PROXY === "true"
+  return trustProxy()
     ? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "global"
     : "global";
 }

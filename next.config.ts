@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
-
 const config: NextConfig = {
+  devIndicators: false,
+  serverExternalPackages: ["pdfkit"],
   outputFileTracingIncludes: { "/*": ["./assets/fonts/*.ttf"] },
-  // Permit the loopback hostname used by local browser tests and development.
+  outputFileTracingExcludes: {
+    "/*": ["./.data/**/*", "./work/**/*", "./.env*"],
+  },
   allowedDevOrigins: ["127.0.0.1"],
 };
-
 export default config;

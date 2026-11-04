@@ -23,6 +23,7 @@ import {
 import { adminApi } from "@/server/admin-api";
 import { applyWebhook, verifyWebhook } from "@/server/delivery";
 import { db } from "@/server/db";
+import { webhookVerifyToken } from "@/server/config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 async function route(
@@ -36,9 +37,9 @@ async function route(
       if (req.method === "GET") {
         const q = new URL(req.url).searchParams;
         if (
-          !process.env.WHATSAPP_VERIFY_TOKEN ||
+          !webhookVerifyToken() ||
           q.get("hub.mode") !== "subscribe" ||
-          q.get("hub.verify_token") !== process.env.WHATSAPP_VERIFY_TOKEN
+          q.get("hub.verify_token") !== webhookVerifyToken()
         )
           throw new HttpError(403, "Verification failed");
         return new Response(q.get("hub.challenge"), {

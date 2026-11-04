@@ -3,7 +3,7 @@
 import { ArrowUpRight, Plus } from "lucide-react";
 import { ProductImage } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
-import { formatPrice, formatUnitPrice, type Product } from "@/lib/products";
+import { formatPrice, type Product } from "@/lib/products";
 import { QuantityControl } from "./cart";
 
 export function ProductCard({
@@ -13,7 +13,7 @@ export function ProductCard({
   product: Product;
   onDetails: (product: Product) => void;
 }) {
-  const { cart, setQuantity, categoryName } = useStore();
+  const { cart, setQuantity } = useStore();
   return (
     <article
       className={`product-card ${!p.available ? "product-unavailable" : ""}`}
@@ -23,13 +23,6 @@ export function ProductCard({
         onClick={() => onDetails(p)}
         aria-label={`View ${p.name} details`}
       >
-        {p.badge && (
-          <span
-            className={`product-badge ${p.badge === "Bestseller" ? "badge-green" : ""}`}
-          >
-            {p.badge === "Bestseller" && <span>✦</span>} {p.badge}
-          </span>
-        )}
         <ProductImage product={p} className="product-art" />
         <span className="product-weight">
           {p.weight} {p.unit} bag
@@ -39,7 +32,12 @@ export function ProductCard({
         </span>
       </button>
       <div className="product-info">
-        <span className="product-category">{categoryName(p.category)}</span>
+        <span
+          className={`product-availability ${p.available ? "" : "unavailable"}`}
+        >
+          <span className="status-dot" />
+          {p.available ? "Available" : "Out of stock"}
+        </span>
         <button className="product-title" onClick={() => onDetails(p)}>
           <h3>{p.name}</h3>
         </button>
@@ -49,9 +47,7 @@ export function ProductCard({
         <div className="product-bottom">
           <div className="product-price">
             <strong>{formatPrice(p.price)}</strong>
-            <span>
-              {formatUnitPrice(p.price / p.weight)} / {p.unit}
-            </span>
+            <span>/ bag</span>
           </div>
           {!p.available ? (
             <span className="sold-out-label">Out of stock</span>

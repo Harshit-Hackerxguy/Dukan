@@ -1796,21 +1796,6 @@
 .login-page form {
   width: min(100%, 460px);
 }
-.checkout-form {
-  display: grid;
-  gap: 12px;
-  margin-top: 16px;
-}
-.checkout-form label {
-  display: grid;
-  gap: 6px;
-}
-.checkout-form input {
-  border: 1px solid #cbd6ce;
-  border-radius: 8px;
-  padding: 12px;
-  width: 100%;
-}
 @media (max-width: 600px) {
   .record-panel,
   .record-form {

@@ -6,7 +6,6 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUpRight,
-  Check,
   ChevronDown,
   CircleHelp,
   Clock3,
@@ -14,25 +13,18 @@ import {
   Leaf,
   Menu,
   Package,
-  PackageCheck,
   Search,
-  ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
   Sprout,
-  Tag,
   Wheat,
   X,
 } from "lucide-react";
 import { Brand } from "@/components/brand";
-import {
-  HeroArt,
-  ProductImage,
-  ProductIllustration,
-} from "@/components/product-art";
+import { ProductImage } from "@/components/product-art";
 import { useStore } from "@/components/store-provider";
 import { Modal } from "@/components/ui/modal";
-import { formatPrice, formatUnitPrice, type Product } from "@/lib/products";
+import { formatPrice, formatUnitPrice } from "@/lib/products";
 import { Cart, QuantityControl } from "./cart";
 import { ProductCard } from "./product-card";
 
@@ -42,14 +34,15 @@ export function Storefront() {
   const {
     products,
     categories,
-    categoryName,
-    settings: storeConfig,
     cart,
     setQuantity,
     notify,
+    loading,
     error,
-    hydrated,
+    refresh,
+    storeInfo,
   } = useStore();
+
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<Sort>("featured");
@@ -72,7 +65,7 @@ export function Storefront() {
       (p) =>
         (category === "all" || p.category === category) &&
         (!inStock || p.available) &&
-        `${p.name} ${p.hindiName} ${categoryName(p.category)} ${p.weight} ${p.unit}`
+        `${p.name} ${p.hindiName} ${categories.find((c) => c.id === p.category)?.name || p.category} ${p.weight} ${p.unit}`
           .toLowerCase()
           .includes(query.trim().toLowerCase()),
     );
@@ -80,7 +73,7 @@ export function Storefront() {
     if (sort === "price-desc") result.sort((a, b) => b.price - a.price);
     if (sort === "name") result.sort((a, b) => a.name.localeCompare(b.name));
     return result;
-  }, [products, category, query, sort, inStock, categoryName]);
+  }, [products, categories, category, query, sort, inStock]);
   const resetFilters = () => {
     setQuery("");
     setCategory("all");
@@ -101,13 +94,6 @@ export function Storefront() {
     <div
       className={`storefront ${count ? "storefront-has-bag" : ""} ${query.trim() ? "storefront-searching" : ""}`}
     >
-      {error && (
-        <p className="storage-notice" role="alert">
-          {error}{" "}
-          <button onClick={() => window.location.reload()}>Retry</button>
-        </p>
-      )}
-      {!hydrated && <p role="status">Loading catalogue…</p>}
       <a className="skip-link" href="#catalogue">
         Skip to products
       </a>
@@ -117,7 +103,8 @@ export function Storefront() {
             <Package size={14} /> Everyday essentials. Wholesale value.
           </span>
           <span className="announcement-demo">
-            <span className="status-dot" /> Your local wholesale store
+            <span className="status-dot" /> Order requests <i /> No online
+            payment
           </span>
         </div>
       </div>
@@ -216,78 +203,33 @@ export function Storefront() {
         </div>
       </header>
       <main>
-        <section className="hero">
+        <section className="hero compact-hero">
           <div className="container hero-inner">
             <div className="hero-copy">
               <span className="eyebrow">
-                <span className="tiny-line" /> GOOD THINGS COME IN BULK
+                <span className="tiny-line" /> YOUR LOCAL WHOLESALE STORE
               </span>
               <h1>
-                Your essentials.
-                <br />
-                <span>Better in bulk.</span>
+                Everyday essentials. <span>By the bag.</span>
               </h1>
               <p>
-                Stock up on the things that bring your kitchen to life.
-                <br className="desktop-break" /> Everyday staples, generous
-                packs, simple choices.
+                Choose your staples, add your bags, and send us an order
+                request.
               </p>
-              <div className="hero-actions">
-                <a className="button button-primary" href="#catalogue">
-                  Shop essentials <ArrowRight size={18} />
-                </a>
-                <span className="hero-footnote">
-                  <span className="mini-check">
-                    <Check size={12} />
-                  </span>{" "}
-                  Big bags. Little effort.
-                </span>
-              </div>
             </div>
-            <HeroArt />
-          </div>
-          <div className="hero-bottom-line" />
-        </section>
-        <section className="trust-bar container" aria-label="Store highlights">
-          <div>
-            <PackageCheck size={21} />
-            <span>
-              <strong>Made for stocking up</strong>
-              <small>Practical 30 kg & 50 kg packs</small>
-            </span>
-          </div>
-          <div>
-            <Wheat size={21} />
-            <span>
-              <strong>Everyday kitchen essentials</strong>
-              <small>The staples you come back to</small>
-            </span>
-          </div>
-          <div>
-            <Tag size={21} />
-            <span>
-              <strong>Clear, simple pricing</strong>
-              <small>Per-bag and per-unit prices</small>
-            </span>
-          </div>
-          <div>
-            <ShieldCheck size={21} />
-            <span>
-              <strong>Browse at your own pace</strong>
-              <small>A simple, no-pressure catalogue</small>
-            </span>
+            <a className="button button-primary" href="#catalogue">
+              Shop essentials <ArrowDown size={17} />
+            </a>
           </div>
         </section>
         <section className="catalogue container" id="catalogue">
           <div className="section-heading">
             <div>
-              <span className="eyebrow muted-eyebrow">
-                THE WELL-STOCKED KITCHEN STARTS HERE
-              </span>
+              <span className="eyebrow muted-eyebrow">THE CATALOGUE</span>
               <h2>
                 Everyday essentials<span>.</span>
               </h2>
-              <p>Good staples. Generous quantities. All in one place.</p>
+              <p>Simple choices. Clear prices per bag.</p>
             </div>
             <span className="catalogue-count">
               <span className="status-dot" /> {products.length} products to
@@ -320,12 +262,6 @@ export function Storefront() {
                   onClick={() => selectCategory(c.id)}
                   aria-pressed={category === c.id}
                 >
-                  <span className="category-mini-art">
-                    <ProductIllustration
-                      kind={c.illustration}
-                      tone={c.id === "essentials" ? "cream" : "green"}
-                    />
-                  </span>
                   <span>
                     <strong>{c.name}</strong>
                     <small>
@@ -349,7 +285,7 @@ export function Storefront() {
                 ) : category === "all" ? (
                   "All products"
                 ) : (
-                  categoryName(category as Product["category"])
+                  categories.find((c) => c.id === category)?.name || category
                 )}{" "}
                 <span className="result-number">{filtered.length}</span>
               </span>
@@ -380,7 +316,22 @@ export function Storefront() {
               </label>
             </div>
           </div>
-          {filtered.length ? (
+          {loading ? (
+            <div className="catalogue-loading" role="status">
+              Loading your essentials…
+            </div>
+          ) : error ? (
+            <div className="empty-results" role="alert">
+              <h3>We couldn’t load the catalogue.</h3>
+              <p>{error}</p>
+              <button
+                className="button button-primary"
+                onClick={() => void refresh()}
+              >
+                Try again
+              </button>
+            </div>
+          ) : filtered.length ? (
             <div className="product-grid">
               {filtered.slice(0, limit).map((product) => (
                 <ProductCard
@@ -431,54 +382,14 @@ export function Storefront() {
             <p>Product availability is subject to confirmation by the store.</p>
           </div>
         </section>
-        <section className="about-section" id="about">
-          <div className="container about-inner">
-            <div className="about-intro">
-              <span className="eyebrow">A LITTLE MORE EVERYDAY GOODNESS</span>
-              <h2>
-                A full pantry.
-                <br />A simpler day.
-              </h2>
-              <p>
-                Whether you’re stocking a family kitchen or planning for a
-                bigger table, finding the basics should feel easy.
-              </p>
-              <span className="about-signature">
-                <Leaf size={18} /> Your neighbourhood wholesale store
-              </span>
-            </div>
-            <div className="about-features">
-              <article>
-                <span>01</span>
-                <div>
-                  <h3>Essentials, thoughtfully organised.</h3>
-                  <p>
-                    Find your rice, sugar, and produce without the endless
-                    scrolling.
-                  </p>
-                </div>
-              </article>
-              <article>
-                <span>02</span>
-                <div>
-                  <h3>Know exactly what’s in your bag.</h3>
-                  <p>
-                    Clear pack sizes and simple price comparisons make planning
-                    easier.
-                  </p>
-                </div>
-              </article>
-              <article>
-                <span>03</span>
-                <div>
-                  <h3>A little local. A lot of possibility.</h3>
-                  <p>
-                    This is just the beginning. More products and ways to shop
-                    are on the way.
-                  </p>
-                </div>
-              </article>
-            </div>
+        <section className="ordering-help container" id="about">
+          <Package size={25} />
+          <div>
+            <h2>Ordering is simple.</h2>
+            <p>
+              Add your bags, leave your name and mobile number, and submit. The
+              store will confirm availability and shipping with you.
+            </p>
           </div>
         </section>
       </main>
@@ -491,7 +402,7 @@ export function Storefront() {
               <br />
               Wholesale, made simple.
             </p>
-            <span className="footer-demo">Wholesale, made simple</span>
+            <span className="footer-demo">Wholesale order requests</span>
           </div>
           <div>
             <h3>Explore the store</h3>
@@ -510,32 +421,34 @@ export function Storefront() {
           </div>
           <div>
             <h3>Come say hello</h3>
-            <p>{storeConfig.location}</p>
-            <p>{storeConfig.contact}</p>
+            <p>
+              {storeInfo.location ||
+                "Visit our store for wholesale essentials."}
+            </p>
+            <p>{storeInfo.contact}</p>
             <span className="footer-hours">
               <Clock3 size={14} />
-              {storeConfig.hours}
+              {storeInfo.hours}
             </span>
           </div>
           <div className="footer-note">
             <span>
               <Sprout size={22} />
             </span>
-            <h3>Growing something good.</h3>
+            <h3>Need to manage the store?</h3>
             <p>
-              Our online store is taking shape.
+              Wholesale orders, made simple.
               <br />
-              For now, explore and make yourself at home.
+              Your store will confirm every request.
             </p>
             <Link href="/admin">
-              Store manager <ArrowUpRight size={14} />
+              Store admin <ArrowUpRight size={14} />
             </Link>
           </div>
         </div>
         <div className="container footer-bottom">
           <span>
-            © {new Date().getFullYear()} {storeConfig.name}. A wholesale store
-            for everyday essentials.
+            © {new Date().getFullYear()} {storeInfo.name}. Wholesale essentials.
           </span>
           <span>
             Made for the everyday. <Leaf size={13} />
@@ -598,11 +511,11 @@ export function Storefront() {
             About the store <ArrowRight size={17} />
           </a>
           <Link href="/admin">
-            Store manager <ArrowUpRight size={17} />
+            Store admin <ArrowUpRight size={17} />
           </Link>
         </nav>
         <p className="muted small">
-          Product availability is subject to confirmation by the store.
+          Browse products and submit an order request.
         </p>
       </Modal>
       <Modal
@@ -620,7 +533,10 @@ export function Storefront() {
               <ProductImage product={selected} />
             </div>
             <div className="detail-info">
-              <span className="eyebrow">{categoryName(selected.category)}</span>
+              <span className="eyebrow">
+                {categories.find((c) => c.id === selected.category)?.name ||
+                  selected.category}
+              </span>
               <p className="detail-hindi" lang="hi">
                 {selected.hindiName}
               </p>
@@ -634,7 +550,9 @@ export function Storefront() {
                   className={selected.available ? "available-text" : "muted"}
                 >
                   <span className="status-dot" />
-                  {selected.available ? "Available to request" : "Out of stock"}
+                  {selected.available
+                    ? "Available to request"
+                    : "Currently unavailable"}
                 </span>
               </div>
               <div className="detail-price">
@@ -663,7 +581,7 @@ export function Storefront() {
                 )
               ) : (
                 <button className="button button-secondary" disabled>
-                  Out of stock
+                  Currently unavailable
                 </button>
               )}
               <small className="detail-disclaimer">

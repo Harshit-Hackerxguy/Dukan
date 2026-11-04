@@ -5,6 +5,23 @@ import { db, transaction } from "./db";
 import { checkoutSchema } from "./validation";
 import { hash, HttpError } from "./http";
 import { generateMemo } from "./memo";
+function receipt(
+  orderId: string,
+  memoNumber: string,
+  totalPaise: number,
+  createdAt: Date,
+  whatsappStatus: string,
+) {
+  return {
+    orderId,
+    memoNumber,
+    totalPaise,
+    createdAt: createdAt.toISOString(),
+    whatsappStatus,
+    message:
+      "Your order request has been recorded. Product availability is subject to confirmation by the store.",
+  };
+}
 export async function checkout(input: unknown, idempotencyKey: string) {
   z.string().uuid().parse(idempotencyKey);
   const data = checkoutSchema.parse(input);
@@ -14,7 +31,7 @@ export async function checkout(input: unknown, idempotencyKey: string) {
   return transaction(async (tx) => {
     const previous = await tx.orderRequest.findUnique({
       where: { idempotencyHash },
-      include: { memo: { select: { number: true } } },
+      include: { memo: { select: { number: true, deliveryStatus: true } } },
     });
     if (previous) {
       if (previous.payloadHash !== payloadHash)
@@ -22,7 +39,13 @@ export async function checkout(input: unknown, idempotencyKey: string) {
           409,
           "This submission key has already been used for a different request",
         );
-      return { orderId: previous.id, memoNumber: previous.memo!.number };
+      return receipt(
+        previous.id,
+        previous.memo!.number,
+        previous.totalPaise,
+        previous.createdAt,
+        previous.memo!.deliveryStatus,
+      );
     }
     const settings = await tx.storeSettings.findUnique({
       where: { id: "store" },
@@ -78,6 +101,7 @@ export async function checkout(input: unknown, idempotencyKey: string) {
       customerPhone: data.phone,
       storeName: settings.name,
       storeContact: settings.contact,
+      storeLocation: settings.location,
       items,
       totalPaise,
     });
@@ -89,6 +113,7 @@ export async function checkout(input: unknown, idempotencyKey: string) {
     await tx.orderRequest.create({
       data: {
         id: orderId,
+        createdAt: now,
         idempotencyHash,
         payloadHash,
         customerId: customer.id,
@@ -99,9 +124,10 @@ export async function checkout(input: unknown, idempotencyKey: string) {
         memo: {
           create: {
             id: memoId,
+            createdAt: now,
             number,
             storageRef: `db:cashMemo/${memoId}`,
-            pdf,
+            pdf: new Uint8Array(pdf),
             recipientPhone: settings.whatsappRecipient,
             job: { create: {} },
           },
@@ -109,7 +135,7 @@ export async function checkout(input: unknown, idempotencyKey: string) {
       },
     });
     // Deliberately no inventory writes here or in any order/delivery operation.
-    return { orderId, memoNumber: number };
+    return receipt(orderId, number, totalPaise, now, "PENDING");
   });
 }
 export async function setOrderStatus(

@@ -1,6 +1,6 @@
 # Dukan — wholesale store, Phase 3
 
-PostgreSQL-backed catalogue, manual inventory, guest order requests, private cash memo PDFs, admin OTP sign-in, and a durable WhatsApp delivery queue. The supplied repository contained the Phase 1 UI, so this change also adds the missing checkout, PDF, delivery, and authentication services while retaining the storefront and product editor design.
+PostgreSQL-backed catalogue, manual inventory, guest order requests, private cash memo PDFs, admin OTP sign-in, and a durable WhatsApp delivery queue. This branch combines the latest Phase 2 customer design, checkout, and Sanjay Store cash memo renderer with Phase 3 permanent database records.
 
 ## Business rules
 
@@ -92,7 +92,7 @@ Known pre-send upload failures and explicit throttling can retry with capped exp
 
 ## Private cash memos and backups
 
-PDFs are stored as PostgreSQL `bytea`, referenced by `db:cashMemo/<id>`. This keeps the PDF and order in one transaction and one backup. Only authenticated admin routes stream previews/downloads; guessing an ID or knowing a customer's phone never grants access. Document status is READY once checkout commits. English and Hindi use bundled Noto fonts; unsupported writing systems are represented with fallback question marks in PDFs while original text remains in database snapshots.
+PDFs are stored as PostgreSQL `bytea`, referenced by `db:cashMemo/<id>`. This keeps the PDF and order in one transaction and one backup. Only authenticated admin routes stream previews/downloads; guessing an ID or knowing a customer's phone never grants access. Document status is READY once checkout commits. English and Hindi use bundled Noto fonts, and original text remains in database snapshots.
 
 Use encrypted database backups and restrict operator access. With credentials supplied through a protected PostgreSQL service file or `.pgpass` (not committed or printed):
 
@@ -111,11 +111,14 @@ Expired `RateLimit`, `OtpChallenge`, and `AdminSession` records can be removed b
 ## Verification
 
 ```bash
+npm run test:unit
 npm run typecheck
 npm run lint
 npm run format:check
 NEXT_TELEMETRY_DISABLED=1 npm run build
 ```
+
+The memo unit tests require the Poppler `pdftotext` and `pdffonts` command-line tools (usually supplied by `poppler-utils`).
 
 Use separate test databases. Tests refuse ordinary development/production database names and never reset databases:
 
@@ -136,3 +139,13 @@ Install Chromium with `npx playwright install chromium` if needed. Browser tests
 Integration tests cover product/variant CRUD, manual adjustments, multi-row rollback, concurrent stock edits, hidden public quantities, price revalidation, concurrent idempotent checkout, PDF generation, historical snapshots, unchanged stock after checkout/status/delivery, failure/retry records, signed webhook transitions, repeat guest records, new-process persistence, OTP restrictions/expiry/reuse, and archival.
 
 Live Twilio SMS and Meta WhatsApp calls have not been verified without real credentials. Production deployment, provider permissions, webhook reachability, HTTPS configuration, and a production backup/restore drill must be configured and verified before treating this as a live service.
+
+## Integration with Phase 2
+
+The latest Phase 2 changes are included in this branch: the compact storefront, plain sack illustrations, two-step checkout, shipping disclaimer, and centered Sanjay Store cash memo with its 11-point line-item table, bilingual fonts, pagination, and repeated table headers. The existing `CashMemoService` renders directly from database snapshots.
+
+The temporary synchronous file repositories and their development routes are replaced by explicit asynchronous PostgreSQL queries in `src/server/catalogue.ts`, `orders.ts`, `auth.ts`, and `delivery.ts`, sharing the serializable transaction boundary in `db.ts`. This is the deliberate asynchronous contract migration described in the Phase 2 notes; the JSON adapter is no longer used by an application route. Existing `.data/` files are left untouched. Review and migrate any real Phase 2 development records separately before selecting a live database.
+
+Existing server configurations can still use the Phase 2 names `SITE_ORIGIN`, `TRUST_PROXY_IP`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, and `WHATSAPP_WEBHOOK_VERIFY_TOKEN`; the corresponding Phase 3 variable takes precedence when both are set. If `WHATSAPP_PROVIDER` is set, use `cloud` for real sends or `disabled` to stop delivery. Old development OTP and WhatsApp mock flags do not enable production bypasses. Use the documented Phase 3 test-only flags for isolated local testing.
+
+`docs/phase2.md` and `docs/validation.md` are historical records. The setup and verification commands in this README describe the current PostgreSQL application. `npm run test:unit` verifies the preserved memo layout, currency, fonts, and multi-page rendering without a database.

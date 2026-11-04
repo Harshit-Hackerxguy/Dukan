@@ -31,6 +31,8 @@ type StoreContextType = {
   cart: Cart;
   hydrated: boolean;
   error: string;
+  loading: boolean;
+  storeInfo: Settings;
   settings: Settings;
   storageAvailable: boolean;
   setQuantity: (id: string, quantity: number) => Promise<void>;
@@ -52,6 +54,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<Cart>({});
   const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const requestId = useRef(0);
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [toast, setToast] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,10 +66,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     timer.current = setTimeout(() => setToast(""), 4500);
   }, []);
   const refresh = useCallback(async () => {
+    const request = ++requestId.current;
+    setLoading(true);
     try {
       const data = await api<Catalogue>(
         admin ? "admin/catalogue" : "catalogue",
       );
+      if (request !== requestId.current) return;
       setProducts(data.products);
       setCart((current) =>
         Object.fromEntries(
@@ -78,16 +85,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setSettings({ ...storeConfig, ...data.settings });
       setError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load catalogue");
+      if (request === requestId.current) {
+        setError(e instanceof Error ? e.message : "Could not load catalogue");
+        setProducts([]);
+      }
     } finally {
-      setHydrated(true);
+      if (request === requestId.current) {
+        setHydrated(true);
+        setLoading(false);
+      }
     }
   }, [admin]);
   useEffect(() => {
     // Synchronize browser storage after hydration without changing the server snapshot.
     queueMicrotask(() => {
       try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+        const saved = JSON.parse(
+          localStorage.getItem(STORAGE_KEY) ||
+            localStorage.getItem("dukan-phase2-bag") ||
+            "{}",
+        );
         const restored: Cart = {};
         for (const [id, quantity] of Object.entries(saved))
           if (
@@ -157,6 +174,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         cart,
         hydrated,
         error,
+        loading,
+        storeInfo: settings,
         storageAvailable,
         notify,
         refresh,

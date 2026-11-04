@@ -19,7 +19,7 @@ test("catalogue supports search, category filters, sort, and empty results", asy
   await page.getByRole("button", { name: "View all products" }).click();
   await page
     .locator(".category-grid")
-    .getByRole("button", { name: "Rice & grains" })
+    .getByRole("button", { name: "Rice & grains", exact: true })
     .click();
   await expect(cards).toHaveCount(4);
   await page
