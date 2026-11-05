@@ -13,36 +13,11 @@ export type OrderLine = {
   totalPaise: number;
 };
 export type OrderStatus = "pending" | "confirmed" | "completed" | "cancelled";
-export type DeliveryStatus =
-  | "pending"
-  | "not_configured"
-  | "mock"
-  | "sending"
-  | "accepted"
-  | "sent"
-  | "delivered"
-  | "read"
-  | "failed"
-  | "unknown";
-export type Delivery = {
-  status: DeliveryStatus;
-  attempts: number;
-  updatedAt: string;
-  messageId?: string;
-  attemptId?: string;
-  recipient?: string;
-  error?: string;
-  retryable?: boolean;
-  nextAttemptAt?: string;
-  eventAt?: number;
-};
 export type StoreSettings = {
   name: string;
   contact: string;
   location: string;
   hours: string;
-  whatsappRecipient: string;
-  whatsappConsentAt: string | null;
 };
 export type Order = {
   id: string;
@@ -56,7 +31,6 @@ export type Order = {
   requestHash: string;
   pdfBase64: string;
   store: StoreSettings;
-  whatsapp: Delivery;
 };
 export type Adjustment = {
   id: string;

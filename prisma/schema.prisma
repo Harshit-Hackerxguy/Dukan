@@ -205,13 +205,15 @@ model CashMemo {
   storageRef     String                    @unique
   pdf            Bytes
   documentStatus String                    @default("READY")
-  recipientPhone String
-  deliveryStatus DeliveryStatus            @default(PENDING)
+  // Historical API delivery metadata; manual orders leave these empty.
+  recipientPhone String?
+  deliveryStatus DeliveryStatus?
   createdAt      DateTime                  @default(now())
   attempts       WhatsAppDeliveryAttempt[]
   job            OutboxJob?
 }
 
+// Retained only to preserve historical delivery records. No runtime sender uses these models.
 model WhatsAppDeliveryAttempt {
   id                String         @id @default(uuid())
   memoId            String
@@ -248,7 +250,8 @@ model StoreSettings {
   contact           String   @default("")
   location          String   @default("")
   hours             String   @default("")
-  whatsappRecipient String
+  // Historical API recipient, no longer configured or used.
+  whatsappRecipient String?
   updatedAt         DateTime @updatedAt
 }
 

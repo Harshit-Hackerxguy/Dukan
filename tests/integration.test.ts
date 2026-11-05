@@ -1,7 +1,7 @@
 import "dotenv/config";
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID, createHmac, randomInt } from "node:crypto";
+import { randomUUID, randomInt } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { PDFDocument } from "pdf-lib";
 import { db } from "../src/server/db";
@@ -12,13 +12,7 @@ import {
   availability,
   archiveProduct,
 } from "../src/server/catalogue";
-import { checkout, setOrderStatus } from "../src/server/orders";
-import {
-  processNextJob,
-  retryDelivery,
-  applyWebhook,
-  verifyWebhook,
-} from "../src/server/delivery";
+import { checkout, listOrders, setOrderStatus } from "../src/server/orders";
 import { getAdmin, requestOtp, verifyOtp } from "../src/server/auth";
 import { hash } from "../src/server/http";
 import type { Product } from "../src/lib/products";
@@ -37,7 +31,7 @@ test("PostgreSQL business workflows and security invariants", async (t) => {
   });
   await db.storeSettings.upsert({
     where: { id: "store" },
-    create: { name: "दुकान Store", whatsappRecipient: admin.phone },
+    create: { name: "दुकान Store" },
     update: {},
   });
   const category = await db.category.create({
@@ -254,7 +248,7 @@ test("PostgreSQL business workflows and security invariants", async (t) => {
     items: [{ variantId: product.id, quantity: 2, expectedPricePaise: 75125 }],
   };
   await t.test(
-    "concurrent checkout retries persist exactly one order, PDF and job without changing stock",
+    "concurrent checkout retries persist one order and PDF, create no job, and preserve stock",
     async () => {
       const before = await db.inventoryBalance.findMany({
         where: { variantId: { in: [product.id, otherId] } },
@@ -278,7 +272,10 @@ test("PostgreSQL business workflows and security invariants", async (t) => {
       assert.equal(order.customer.phoneVerified, false);
       assert.equal(order.totalPaise, 150250);
       assert.equal(order.items[0].unitPricePaise, 75125);
-      assert.ok(order.memo?.job);
+      assert.ok(order.memo);
+      assert.equal(order.memo.job, null);
+      assert.equal(order.memo.deliveryStatus, null);
+      assert.equal(results[0].whatsappStatus, "not_configured");
       memoId = order.memo.id;
       pdf = order.memo.pdf;
       assert.equal(Buffer.from(pdf).subarray(0, 5).toString(), "%PDF-");
@@ -381,88 +378,37 @@ test("PostgreSQL business workflows and security invariants", async (t) => {
     },
   );
   await t.test(
-    "failed delivery keeps the order and safe retry reuses its memo",
+    "manual sharing uses the immutable order phone and preserves the PDF",
     async () => {
-      const before = await db.inventoryBalance.findUniqueOrThrow({
-        where: { variantId: product.id },
+      const order = await db.orderRequest.findUniqueOrThrow({
+        where: { id: orderId },
       });
-      while (
-        await processNextJob(async () => {
-          throw new Error("Simulated provider timeout");
-        })
-      ) {
-        /* drain this isolated test database */
+      await db.customer.update({
+        where: { id: order.customerId },
+        data: { phone: "+919876543219" },
+      });
+      try {
+        const listed = (await listOrders("+919876543211")).find(
+          (row) => row.id === orderId,
+        )!;
+        assert.equal(listed.whatsappShareUrl, "https://wa.me/919876543211");
+        assert.equal("deliveryStatus" in listed.memo!, false);
+        assert.equal("attempts" in listed.memo!, false);
+        assert.equal(await db.outboxJob.count({ where: { memoId } }), 0);
+        assert.equal(
+          await db.whatsAppDeliveryAttempt.count({ where: { memoId } }),
+          0,
+        );
+        assert.deepEqual(
+          (await db.cashMemo.findUniqueOrThrow({ where: { id: memoId } })).pdf,
+          pdf,
+        );
+      } finally {
+        await db.customer.update({
+          where: { id: order.customerId },
+          data: { phone: order.customerPhone },
+        });
       }
-      assert.equal(
-        (await db.cashMemo.findUniqueOrThrow({ where: { id: memoId } }))
-          .deliveryStatus,
-        "UNCERTAIN",
-      );
-      assert.ok(await db.orderRequest.findUnique({ where: { id: orderId } }));
-      await assert.rejects(
-        retryDelivery(memoId, admin.id, false),
-        /acknowledge/,
-      );
-      await retryDelivery(memoId, admin.id, true);
-      await assert.rejects(
-        retryDelivery(memoId, admin.id, true),
-        /already queued/,
-      );
-      let sends = 0;
-      const messageId = `provider-${suffix}`;
-      await Promise.all([
-        processNextJob(async () => {
-          sends++;
-          return messageId;
-        }),
-        processNextJob(async () => {
-          sends++;
-          return messageId;
-        }),
-      ]);
-      assert.equal(sends, 1);
-      assert.equal(
-        (await db.cashMemo.findUniqueOrThrow({ where: { id: memoId } }))
-          .deliveryStatus,
-        "SUBMITTED",
-      );
-      assert.deepEqual(
-        await db.inventoryBalance.findUniqueOrThrow({
-          where: { variantId: product.id },
-        }),
-        before,
-      );
-      const payload = {
-        entry: [
-          {
-            changes: [
-              { value: { statuses: [{ id: messageId, status: "delivered" }] } },
-            ],
-          },
-        ],
-      };
-      process.env.WHATSAPP_APP_SECRET = "integration-only-secret";
-      const raw = JSON.stringify(payload);
-      verifyWebhook(
-        raw,
-        `sha256=${createHmac("sha256", process.env.WHATSAPP_APP_SECRET).update(raw).digest("hex")}`,
-      );
-      assert.throws(() => verifyWebhook(raw, "sha256=bad"), /Invalid/);
-      await applyWebhook(payload);
-      await applyWebhook({
-        entry: [
-          {
-            changes: [
-              { value: { statuses: [{ id: messageId, status: "sent" }] } },
-            ],
-          },
-        ],
-      });
-      assert.equal(
-        (await db.cashMemo.findUniqueOrThrow({ where: { id: memoId } }))
-          .deliveryStatus,
-        "DELIVERED",
-      );
     },
   );
   await t.test(
@@ -486,33 +432,6 @@ test("PostgreSQL business workflows and security invariants", async (t) => {
       assert.equal(first.customerId, second.customerId);
       assert.equal(first.customerName, "परीक्षा Customer");
       assert.equal(second.customerName, "Another stated name");
-    },
-  );
-  await t.test(
-    "unconfigured WhatsApp records a failed attempt without losing a request",
-    async () => {
-      const token = process.env.WHATSAPP_TOKEN;
-      process.env.WHATSAPP_TOKEN = "";
-      try {
-        while (await processNextJob()) {
-          /* all sends fail locally before any provider call */
-        }
-        const failed = await db.whatsAppDeliveryAttempt.findFirst({
-          where: { error: "WhatsApp provider is not configured" },
-          orderBy: { createdAt: "desc" },
-        });
-        assert.ok(failed);
-        assert.equal(failed.status, "FAILED");
-        assert.ok(
-          await db.cashMemo.findUnique({
-            where: { id: failed.memoId },
-            include: { order: true },
-          }),
-        );
-      } finally {
-        if (token === undefined) delete process.env.WHATSAPP_TOKEN;
-        else process.env.WHATSAPP_TOKEN = token;
-      }
     },
   );
   await t.test(

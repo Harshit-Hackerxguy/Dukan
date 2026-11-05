@@ -17,11 +17,7 @@ async function main() {
   });
   await db.storeSettings.upsert({
     where: { id: "store" },
-    create: {
-      whatsappRecipient: phoneSchema.parse(
-        process.env.WHATSAPP_RECIPIENT || phone,
-      ),
-    },
+    create: {},
     update: {},
   });
   for (const p of initialProducts) {

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { ShareMemo } from "./share-memo";
 import { api } from "@/lib/api";
 import { formatPrice, type Category } from "@/lib/products";
 import { useStore } from "@/components/store-provider";
@@ -313,6 +314,7 @@ export function Inventory() {
   );
 }
 type Order = {
+  whatsappShareUrl: string | null;
   id: string;
   customerName: string;
   customerPhone: string;
@@ -330,16 +332,7 @@ type Order = {
   memo: {
     id: string;
     number: string;
-    deliveryStatus: string;
     documentStatus: string;
-    attempts: {
-      id: string;
-      recipientPhone: string;
-      status: string;
-      providerMessageId: string | null;
-      error: string | null;
-      createdAt: string;
-    }[];
   } | null;
 };
 export function Orders() {
@@ -473,46 +466,11 @@ export function Orders() {
                 >
                   Download memo
                 </a>
-                <span>WhatsApp: {order.memo.deliveryStatus}</span>
-                {["FAILED", "UNCERTAIN"].includes(
-                  order.memo.deliveryStatus,
-                ) && (
-                  <button
-                    className="button button-primary"
-                    disabled={!!busy}
-                    onClick={() => {
-                      const uncertain =
-                        order.memo!.deliveryStatus === "UNCERTAIN";
-                      if (
-                        uncertain &&
-                        !window.confirm(
-                          "The provider result is unknown. Check WhatsApp first. Retry may send a duplicate PDF. Continue?",
-                        )
-                      )
-                        return;
-                      action(order.id, () =>
-                        api(`admin/memos/${order.memo!.id}/retry`, "POST", {
-                          acknowledgeUncertain: uncertain,
-                        }),
-                      );
-                    }}
-                  >
-                    Retry WhatsApp
-                  </button>
-                )}
+                <ShareMemo
+                  memo={order.memo}
+                  whatsappShareUrl={order.whatsappShareUrl}
+                />
               </div>
-              <details>
-                <summary>
-                  Delivery attempts ({order.memo.attempts.length} most recent)
-                </summary>
-                {order.memo.attempts.map((a) => (
-                  <p key={a.id}>
-                    {date(a.createdAt)} · {a.recipientPhone} · {a.status}
-                    <br />
-                    {a.providerMessageId || a.error || "Awaiting provider"}
-                  </p>
-                ))}
-              </details>
             </>
           )}
         </article>
@@ -607,20 +565,15 @@ type SettingsData = {
   contact: string;
   location: string;
   hours: string;
-  whatsappRecipient: string;
   admin: { name: string; phone: string };
 };
 export function Settings() {
   const { data, error, reload } = useRemote<SettingsData>("admin/settings");
   const [draft, setDraft] = useState<SettingsData | null>(null);
   const current = draft || data;
-  const [challengeId, setChallengeId] = useState("");
-  const [code, setCode] = useState("");
   const [failure, setFailure] = useState("");
   const [busy, setBusy] = useState(false);
   const { notify, refresh } = useStore();
-  const changed =
-    current && data && current.whatsappRecipient !== data.whatsappRecipient;
   return (
     <>
       <div className="admin-page-heading">
@@ -640,11 +593,8 @@ export function Settings() {
             try {
               await api("admin/settings", "POST", {
                 ...current,
-                ...(challengeId ? { challengeId, code } : {}),
               });
               setDraft(null);
-              setChallengeId("");
-              setCode("");
               await reload();
               await refresh();
               notify("Settings saved");
@@ -663,14 +613,13 @@ export function Settings() {
               ["contact", "Contact details"],
               ["location", "Store location"],
               ["hours", "Opening hours"],
-              ["whatsappRecipient", "WhatsApp recipient"],
             ] as const
           ).map(([key, label]) => (
             <label key={key}>
               {label}
               <input
-                required={key === "name" || key === "whatsappRecipient"}
-                type={key === "whatsappRecipient" ? "tel" : "text"}
+                required={key === "name"}
+                type="text"
                 value={current[key]}
                 onChange={(e) =>
                   setDraft({ ...current, [key]: e.target.value })
@@ -683,49 +632,7 @@ export function Settings() {
             Identity changes require the store owner’s protected server
             configuration process.
           </p>
-          {changed && (
-            <div>
-              <p>
-                Confirm the recipient change with a fresh admin OTP. Previously
-                queued memos retain their original recipient.
-              </p>
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={async () => {
-                  try {
-                    const result = await api<{ challengeId: string }>(
-                      "auth/request",
-                      "POST",
-                      { phone: current.admin.phone },
-                    );
-                    setChallengeId(result.challengeId);
-                  } catch (e) {
-                    setFailure(
-                      e instanceof Error ? e.message : "Could not send OTP",
-                    );
-                  }
-                }}
-              >
-                Send verification OTP
-              </button>
-              {challengeId && (
-                <label>
-                  Verification code
-                  <input
-                    inputMode="numeric"
-                    pattern="[0-9]{6}"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                  />
-                </label>
-              )}
-            </div>
-          )}
-          <button
-            className="button button-primary"
-            disabled={busy || !!(changed && !challengeId)}
-          >
+          <button className="button button-primary" disabled={busy}>
             Save settings
           </button>
         </form>

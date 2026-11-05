@@ -5,19 +5,20 @@ import { db, transaction } from "./db";
 import { checkoutSchema } from "./validation";
 import { hash, HttpError } from "./http";
 import { generateMemo } from "./memo";
+import { whatsappLink } from "@/lib/whatsapp-link";
 function receipt(
   orderId: string,
   memoNumber: string,
   totalPaise: number,
   createdAt: Date,
-  whatsappStatus: string,
 ) {
   return {
     orderId,
     memoNumber,
     totalPaise,
     createdAt: createdAt.toISOString(),
-    whatsappStatus,
+    // Preserve the customer receipt contract and its existing manual-share message.
+    whatsappStatus: "not_configured",
     message:
       "Your order request has been recorded. Product availability is subject to confirmation by the store.",
   };
@@ -31,7 +32,7 @@ export async function checkout(input: unknown, idempotencyKey: string) {
   return transaction(async (tx) => {
     const previous = await tx.orderRequest.findUnique({
       where: { idempotencyHash },
-      include: { memo: { select: { number: true, deliveryStatus: true } } },
+      include: { memo: { select: { number: true } } },
     });
     if (previous) {
       if (previous.payloadHash !== payloadHash)
@@ -44,7 +45,6 @@ export async function checkout(input: unknown, idempotencyKey: string) {
         previous.memo!.number,
         previous.totalPaise,
         previous.createdAt,
-        previous.memo!.deliveryStatus,
       );
     }
     const settings = await tx.storeSettings.findUnique({
@@ -128,14 +128,12 @@ export async function checkout(input: unknown, idempotencyKey: string) {
             number,
             storageRef: `db:cashMemo/${memoId}`,
             pdf: new Uint8Array(pdf),
-            recipientPhone: settings.whatsappRecipient,
-            job: { create: {} },
           },
         },
       },
     });
-    // Deliberately no inventory writes here or in any order/delivery operation.
-    return receipt(orderId, number, totalPaise, now, "PENDING");
+    // Deliberately no inventory writes here or in any order operation.
+    return receipt(orderId, number, totalPaise, now);
   });
 }
 export async function setOrderStatus(
@@ -161,7 +159,7 @@ export async function setOrderStatus(
   });
 }
 export async function listOrders(search = "", skip = 0) {
-  return db.orderRequest.findMany({
+  const orders = await db.orderRequest.findMany({
     where: search
       ? {
           OR: [
@@ -181,11 +179,13 @@ export async function listOrders(search = "", skip = 0) {
           id: true,
           number: true,
           documentStatus: true,
-          deliveryStatus: true,
           createdAt: true,
-          attempts: { orderBy: { createdAt: "desc" }, take: 10 },
         },
       },
     },
   });
+  return orders.map((order) => ({
+    ...order,
+    whatsappShareUrl: whatsappLink(order.customerPhone),
+  }));
 }

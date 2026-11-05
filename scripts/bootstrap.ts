@@ -27,11 +27,7 @@ async function main() {
     });
     await tx.storeSettings.upsert({
       where: { id: "store" },
-      create: {
-        whatsappRecipient: phoneSchema.parse(
-          process.env.WHATSAPP_RECIPIENT || phone,
-        ),
-      },
+      create: {},
       update: {},
     });
     await tx.auditLog.create({

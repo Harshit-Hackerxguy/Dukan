@@ -6,7 +6,6 @@ import {
   handle,
   json,
   body,
-  readBody,
   sameOrigin,
   rateLimit,
   clientKey,
@@ -21,9 +20,7 @@ import {
   cookieOptions,
 } from "@/server/auth";
 import { adminApi } from "@/server/admin-api";
-import { applyWebhook, verifyWebhook } from "@/server/delivery";
 import { db } from "@/server/db";
-import { webhookVerifyToken } from "@/server/config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 async function route(
@@ -33,33 +30,6 @@ async function route(
   return handle(async () => {
     const { path } = await context.params;
     const route = path.join("/");
-    if (route === "webhooks/whatsapp") {
-      if (req.method === "GET") {
-        const q = new URL(req.url).searchParams;
-        if (
-          !webhookVerifyToken() ||
-          q.get("hub.mode") !== "subscribe" ||
-          q.get("hub.verify_token") !== webhookVerifyToken()
-        )
-          throw new HttpError(403, "Verification failed");
-        return new Response(q.get("hub.challenge"), {
-          headers: { "Cache-Control": "no-store" },
-        });
-      }
-      if (req.method !== "POST") throw new HttpError(405, "Method not allowed");
-      if (Number(req.headers.get("content-length")) > 200000)
-        throw new HttpError(413, "Webhook too large");
-      const raw = await readBody(req, 200000);
-      verifyWebhook(raw, req.headers.get("x-hub-signature-256"));
-      let payload;
-      try {
-        payload = JSON.parse(raw);
-      } catch {
-        throw new HttpError(400, "Invalid JSON");
-      }
-      await applyWebhook(payload);
-      return json({ ok: true });
-    }
     if (!["GET", "HEAD"].includes(req.method)) sameOrigin(req);
     if (path[0] === "admin")
       return adminApi(req, path.slice(1), await requireAdmin());

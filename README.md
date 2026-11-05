@@ -1,10 +1,10 @@
 # Dukan — wholesale store, Phase 3
 
-PostgreSQL-backed catalogue, manual inventory, guest order requests, private cash memo PDFs, admin OTP sign-in, and a durable WhatsApp delivery queue. This branch combines the latest Phase 2 customer design, checkout, and Sanjay Store cash memo renderer with Phase 3 permanent database records.
+PostgreSQL-backed catalogue, manual inventory, guest order requests, private cash memo PDFs, admin OTP sign-in, and manual bill sharing through WhatsApp. This branch combines the latest Phase 2 customer design, checkout, and Sanjay Store cash memo renderer with Phase 3 permanent database records.
 
 ## Business rules
 
-- **Only explicit admin stock edits change inventory.** Checkout, PDFs, WhatsApp delivery, and order status updates never deduct or reserve stock.
+- **Only explicit admin stock edits change inventory.** Checkout, PDFs, manual sharing, and order status updates never deduct or reserve stock.
 - Public catalogue responses contain availability flags, never exact quantities. Quantities are checked when adding to a bag and again at checkout.
 - Guest customers provide only name and mobile number. Numbers are normalized to E.164 but remain unverified. Matching a phone links requests; it grants no access to history.
 - Orders preserve product, package, customer, price, and total snapshots. Cash memo bytes are immutable. Completed means explicitly marked completed by an admin, not electronic payment.
@@ -16,14 +16,12 @@ Requires Node.js 22.13+ and PostgreSQL 16+. Use npm and a persistent PostgreSQL 
 
 ```bash
 cp .env.example .env
-# Edit DATABASE_URL, APP_ORIGIN, ADMIN_PHONE, and WHATSAPP_RECIPIENT.
+# Edit DATABASE_URL, APP_ORIGIN, and ADMIN_PHONE.
 npm ci
 npm run db:generate
 npm run db:migrate
 npm run db:seed
 npm run dev
-# In a second process, using the same environment:
-npm run worker
 ```
 
 Open `APP_ORIGIN` exactly as configured (including hostname and port). `/` is the storefront; `/admin` redirects unauthenticated users to `/admin-login`. The seed supplies six demo products with 100 packages each, with explicit development adjustment records. Seed runs are additive and do not overwrite prices or stock. **Do not use development stock in a real store.** New products created through the admin UI start at zero until an explicit stock edit.
@@ -34,7 +32,7 @@ Prisma uses its JavaScript query compiler with the PostgreSQL driver. The option
 
 ## Schema and migrations
 
-`prisma/schema.prisma` defines admins/sessions/challenges, categories, products and independently stocked variants, inventory balances and adjustments, guest customers, immutable order items, cash memos, delivery attempts, outbox jobs, settings, audit logs, and persistent rate-limit buckets.
+`prisma/schema.prisma` defines admins/sessions/challenges, categories, products and independently stocked variants, inventory balances and adjustments, guest customers, immutable order items, cash memos, historical delivery attempts/outbox jobs, settings, audit logs, and persistent rate-limit buckets.
 
 Money is stored as integer paise. Foreign keys preserve historical associations; archival replaces product deletion. PostgreSQL checks enforce valid stock and line amounts. Each stock edit checks a version number; stale edits reject the entire bulk transaction. Serializable transactions retry transient serialization conflicts.
 
@@ -49,11 +47,9 @@ npm run db:migrate
 npm run db:bootstrap
 npm run build
 npm start
-# Supervise separately with systemd, a container service, or a process manager:
-npm run worker
 ```
 
-Keep `assets/fonts/` in deployment artifacts; Next.js output tracing includes the Noto font files used for English/Hindi PDFs. Their license is included. A persistent Node.js worker is required for queue processing; merely serving Next.js does not send queued messages. `npm run worker:once` processes one eligible job for diagnostics.
+Keep `assets/fonts/` in deployment artifacts; Next.js output tracing includes the Noto font files used for English/Hindi PDFs. Their license is included. No background delivery worker or WhatsApp API credentials are required.
 
 ## Admin OTP and security configuration
 
@@ -68,27 +64,29 @@ OTP requests and verification attempts are rate limited in PostgreSQL. Challenge
 
 `TRUST_PROXY=false` uses conservative shared rate limits. Set it to true **only** behind a reverse proxy that strips client-supplied `X-Forwarded-For` and writes the actual address. Configure HTTPS, request-body limits, and network access to PostgreSQL at deployment. Use a dedicated runtime database user with only required table/sequence permissions, and a separate migration identity. Do not expose database credentials or provider secrets through `NEXT_PUBLIC_*` variables.
 
-Changing the WhatsApp recipient in Settings requires a fresh OTP for the existing authorized admin. Already recorded memos keep their original recipient. To rotate the admin identity, a trusted operator must update `ADMIN_PHONE` in protected server configuration and run:
+To rotate the admin identity, a trusted operator must update `ADMIN_PHONE` in protected server configuration and run:
 
 ```bash
 npm run db:bootstrap -- --rotate-admin
 ```
 
-This disables prior admins, revokes their sessions, and records an audit event. Restart web/worker processes with the updated configuration. Configure and test OTP access for the new number before ending the operator's recovery access.
+This disables prior admins, revokes their sessions, and records an audit event. Restart web processes with the updated configuration. Configure and test OTP access for the new number before ending the operator's recovery access.
 
-## WhatsApp setup and delivery behavior
+## Manual WhatsApp sharing
 
-The implementation uses Meta's WhatsApp Cloud API:
+Customer pages, checkout, inventory behavior, and PDF layout are unchanged. Checkout saves the order and immutable PDF together, without creating any delivery jobs. The existing customer receipt uses its manual-sharing status message. No WhatsApp Cloud API requests, webhooks, retry routes, worker scripts, recipient settings, or provider configuration remain active.
 
-1. Configure a business phone number and server-side `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and a supported `WHATSAPP_API_VERSION`.
-2. Create and obtain approval for a template with **one document header and no body parameters**. Set its name in `WHATSAPP_TEMPLATE` and language in `WHATSAPP_TEMPLATE_LANGUAGE`.
-3. Obtain the recipient's WhatsApp consent, configure the admin recipient, and verify template delivery under your Meta account's restrictions.
-4. Configure the webhook callback as `https://your-origin/api/webhooks/whatsapp`, with `WHATSAPP_VERIFY_TOKEN` and the Meta app's `WHATSAPP_APP_SECRET`. Subscribe to message statuses. POST payloads are authenticated with HMAC-SHA256 over the original body.
-5. Run `npm run worker` continuously and monitor failures and queue age. The worker uploads the PDF as private provider media; no public PDF URL is needed.
+In Admin → Orders, **Download memo** and **Preview PDF** work as before. **Share on whatsapp** fetches the private PDF, starts its download, then opens the WhatsApp chat for the phone snapshot saved on that order. The admin attaches the downloaded PDF and sends it manually. A `wa.me` link cannot automatically attach local files or send messages.
 
-Checkout commits the order, PDF, and outbox job together. A provider failure cannot undo the order. Workers claim jobs with `FOR UPDATE SKIP LOCKED`; retries never create new orders. A successful send response means **submitted**, not delivered. Signed callbacks advance sent/delivered states without accepting older statuses as regressions. Attempts retain recipient, timestamp, provider message ID, response status/error summary, and error information; access tokens are never logged.
+Share links are derived from saved order numbers in international format, e.g. `https://wa.me/919876543210` (no `+`, spaces, or duplicate country code). Invalid historical numbers disable sharing without affecting PDF downloads. A blank tab is reserved during the click to avoid popup blockers and navigates only after a successful download request; failures close it. A direct **Open customer’s WhatsApp** link is also shown after download if the popup was blocked or closed. Browsers expose download initiation, not confirmation that a file has finished saving to disk.
 
-Known pre-send upload failures and explicit throttling can retry with capped exponential backoff (five attempts). Timeouts/5xx at message submission, or a worker crash during delivery, leave an **uncertain** record instead of automatically risking a duplicate. An admin must check WhatsApp/provider records and explicitly acknowledge the duplicate risk before retrying. The provider does not offer an end-to-end exactly-once guarantee. Delayed callbacks are correlated using the attempt ID in `biz_opaque_callback_data`.
+When upgrading an existing deployment:
+
+1. Stop and disable all old delivery worker processes/services before migration, and stop the old web release during the switch.
+2. Run `npm run db:generate` and `npm run db:migrate`, then build and start the new web release.
+3. Remove old WhatsApp API credentials and webhook subscriptions from deployment/provider configuration; no replacement credentials are needed.
+
+The forward migration preserves existing order/PDF bytes and historical delivery records, makes unused delivery metadata optional, and retires pending/running outbox jobs. Historical tables are retained for audit and backup compatibility only; the application no longer uses them for delivery.
 
 ## Private cash memos and backups
 
@@ -104,7 +102,7 @@ createdb --maintenance-db=service=dukan-maintenance dukan_restore_check
 pg_restore --dbname=service=dukan-restore --exit-on-error --single-transaction dukan-backup.dump
 ```
 
-Define `dukan-restore` to point to that new database. Verify row counts, representative memo previews, and stock adjustment history before any planned switchover. Keep the restored worker stopped to avoid re-sending old pending jobs. Reconcile outbox state before enabling delivery. Revoke restored sessions if the backup may be old. For production recovery objectives, configure provider-managed point-in-time recovery/WAL archival, documented retention, and periodic restore drills. No destructive resets are part of setup or backup procedures.
+Define `dukan-restore` to point to that new database. Verify row counts, representative memo previews, and stock adjustment history before any planned switchover. Do not restore or start the retired delivery worker. Revoke restored sessions if the backup may be old. For production recovery objectives, configure provider-managed point-in-time recovery/WAL archival, documented retention, and periodic restore drills. No destructive resets are part of setup or backup procedures.
 
 Expired `RateLimit`, `OtpChallenge`, and `AdminSession` records can be removed by a trusted maintenance task after their expiry. Preserve orders, memos, stock adjustments, and audit history according to the store's retention policy. Backup storage grows with PDF volume.
 
@@ -136,16 +134,16 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm test
 
 Install Chromium with `npx playwright install chromium` if needed. Browser tests use an isolated admin session fixture and separately exercise the OTP UI, unauthorized APIs, private PDFs, checkout, inventory, mobile layouts, and accessibility. Test data is retained in its isolated database; use a fresh test database for a clean suite run, or archive prior test products explicitly. Do not point a running dev server at a different database from the test runner.
 
-Integration tests cover product/variant CRUD, manual adjustments, multi-row rollback, concurrent stock edits, hidden public quantities, price revalidation, concurrent idempotent checkout, PDF generation, historical snapshots, unchanged stock after checkout/status/delivery, failure/retry records, signed webhook transitions, repeat guest records, new-process persistence, OTP restrictions/expiry/reuse, and archival.
+Integration tests cover product/variant CRUD, manual adjustments, multi-row rollback, concurrent stock edits, hidden public quantities, price revalidation, concurrent idempotent checkout, PDF generation, historical snapshots, unchanged stock after checkout/status updates, absence of new delivery jobs, snapshot-based manual share links, repeat guest records, new-process persistence, OTP restrictions/expiry/reuse, and archival.
 
-Live Twilio SMS and Meta WhatsApp calls have not been verified without real credentials. Production deployment, provider permissions, webhook reachability, HTTPS configuration, and a production backup/restore drill must be configured and verified before treating this as a live service.
+Live Twilio SMS calls have not been verified without real credentials. Production deployment, provider permissions, HTTPS configuration, and a production backup/restore drill must be configured and verified before treating this as a live service.
 
 ## Integration with Phase 2
 
 The latest Phase 2 changes are included in this branch: the compact storefront, plain sack illustrations, two-step checkout, shipping disclaimer, and centered Sanjay Store cash memo with its 11-point line-item table, bilingual fonts, pagination, and repeated table headers. The existing `CashMemoService` renders directly from database snapshots.
 
-The temporary synchronous file repositories and their development routes are replaced by explicit asynchronous PostgreSQL queries in `src/server/catalogue.ts`, `orders.ts`, `auth.ts`, and `delivery.ts`, sharing the serializable transaction boundary in `db.ts`. This is the deliberate asynchronous contract migration described in the Phase 2 notes; the JSON adapter is no longer used by an application route. Existing `.data/` files are left untouched. Review and migrate any real Phase 2 development records separately before selecting a live database.
+The temporary synchronous file repositories and their development routes are replaced by explicit asynchronous PostgreSQL queries in `src/server/catalogue.ts`, `orders.ts`, and `auth.ts`, sharing the serializable transaction boundary in `db.ts`. This is the deliberate asynchronous contract migration described in the Phase 2 notes; the JSON adapter is no longer used by an application route. Existing `.data/` files are left untouched. Review and migrate any real Phase 2 development records separately before selecting a live database.
 
-Existing server configurations can still use the Phase 2 names `SITE_ORIGIN`, `TRUST_PROXY_IP`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, and `WHATSAPP_WEBHOOK_VERIFY_TOKEN`; the corresponding Phase 3 variable takes precedence when both are set. If `WHATSAPP_PROVIDER` is set, use `cloud` for real sends or `disabled` to stop delivery. Old development OTP and WhatsApp mock flags do not enable production bypasses. Use the documented Phase 3 test-only flags for isolated local testing.
+Existing server configurations can still use the Phase 2 names `SITE_ORIGIN` and `TRUST_PROXY_IP`; the corresponding Phase 3 variable takes precedence when both are set. Old WhatsApp configuration is unused. Use the documented Phase 3 test-only OTP flags for isolated local testing.
 
 `docs/phase2.md` and `docs/validation.md` are historical records. The setup and verification commands in this README describe the current PostgreSQL application. `npm run test:unit` verifies the preserved memo layout, currency, fonts, and multi-page rendering without a database.

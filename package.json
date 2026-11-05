@@ -19,8 +19,6 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:bootstrap": "tsx scripts/bootstrap.ts",
-    "worker": "tsx scripts/worker.ts",
-    "worker:once": "tsx scripts/worker.ts --once",
     "test:integration": "tsx --test tests/integration.test.ts",
     "postinstall": "prisma generate",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",

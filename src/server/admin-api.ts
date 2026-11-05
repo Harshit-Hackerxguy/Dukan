@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db, transaction } from "./db";
-import { body, hash, HttpError, json } from "./http";
+import { body, HttpError, json } from "./http";
 import {
   archiveProduct,
   catalogue,
@@ -8,15 +8,12 @@ import {
   adjustStock,
 } from "./catalogue";
 import { listOrders, setOrderStatus } from "./orders";
-import { retryDelivery } from "./delivery";
-import { phoneSchema } from "./validation";
-import { verifyOtp } from "./auth";
 export async function adminApi(
   req: Request,
   path: string[],
   admin: { id: string; phone: string; name: string },
 ) {
-  const [resource, id, action] = path;
+  const [resource, id] = path;
   const url = new URL(req.url);
   const skip = z.coerce
     .number()
@@ -102,6 +99,7 @@ export async function adminApi(
         return json({
           ...(await db.storeSettings.findUniqueOrThrow({
             where: { id: "store" },
+            select: { name: true, contact: true, location: true, hours: true },
           })),
           admin: { name: admin.name, phone: admin.phone },
         });
@@ -169,18 +167,6 @@ export async function adminApi(
     const data = z.object({ status: z.string() }).parse(await body(req));
     return json(await setOrderStatus(id, data.status, admin.id));
   }
-  if (
-    resource === "memos" &&
-    id &&
-    action === "retry" &&
-    req.method === "POST"
-  ) {
-    const data = z
-      .object({ acknowledgeUncertain: z.boolean().default(false) })
-      .parse(await body(req));
-    await retryDelivery(id, admin.id, data.acknowledgeUncertain);
-    return json({ ok: true });
-  }
   if (resource === "categories" && req.method === "POST") {
     const data = z
       .object({
@@ -216,53 +202,14 @@ export async function adminApi(
         contact: z.string().max(150),
         location: z.string().max(200),
         hours: z.string().max(150),
-        whatsappRecipient: phoneSchema,
-        challengeId: z.string().uuid().optional(),
-        code: z.string().optional(),
       })
       .parse(await body(req));
-    const before = await db.storeSettings.findUniqueOrThrow({
-      where: { id: "store" },
-    });
-    const recipientChanged =
-      before.whatsappRecipient !== data.whatsappRecipient;
-    if (recipientChanged) {
-      if (!data.challengeId || !data.code)
-        throw new HttpError(
-          403,
-          "Verify a fresh admin OTP to change the WhatsApp recipient",
-        );
-      const token = await verifyOtp({
-        challengeId: data.challengeId,
-        code: data.code,
-      });
-      await db.adminSession.delete({ where: { tokenHash: hash(token) } });
-    }
-    const settings = {
-      name: data.name,
-      contact: data.contact,
-      location: data.location,
-      hours: data.hours,
-      whatsappRecipient: data.whatsappRecipient,
-    };
     await transaction(async (tx) => {
-      const current = await tx.storeSettings.findUniqueOrThrow({
-        where: { id: "store" },
-      });
-      if (
-        current.whatsappRecipient !== settings.whatsappRecipient &&
-        !recipientChanged
-      )
-        throw new HttpError(
-          409,
-          "The WhatsApp recipient changed in another session. Refresh and verify a fresh OTP before saving.",
-        );
-      await tx.storeSettings.update({ where: { id: "store" }, data: settings });
+      await tx.storeSettings.update({ where: { id: "store" }, data });
       await tx.auditLog.create({
         data: {
           adminId: admin.id,
           action: "SETTINGS_EDIT",
-          details: { recipientChanged },
         },
       });
     });
