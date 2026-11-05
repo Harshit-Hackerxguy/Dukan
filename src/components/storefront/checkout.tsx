@@ -1,9 +1,14 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, LoaderCircle } from "lucide-react";
 import { useStore } from "@/components/store-provider";
 import { api } from "@/lib/api";
 import { formatPrice } from "@/lib/products";
+
+import {
+  CustomerLogin,
+  type CustomerIdentity,
+} from "@/components/account/customer-login";
 
 type Receipt = {
   memoNumber: string;
@@ -40,10 +45,34 @@ export function Checkout({
   onBusy: (busy: boolean) => void;
 }) {
   const { products, cart, clearCart, refresh } = useStore();
+  const [customer, setCustomer] = useState<CustomerIdentity | null>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  function signedIn(value: CustomerIdentity) {
+    setCustomer(value);
+    setName(value.name);
+    setPhone(value.phone.replace(/^\+91/, ""));
+  }
+  useEffect(() => {
+    let active = true;
+    api<{ customer: CustomerIdentity | null }>("auth/session")
+      .then((session) => {
+        if (active && session.customer) signedIn(session.customer);
+      })
+      .catch(() => {
+        if (active)
+          setError("Could not load your session. Please sign in again.");
+      })
+      .finally(() => {
+        if (active) setLoadingSession(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const pending = useRef<{ fingerprint: string; key: string } | null>(null);
   const submitting = useRef(false);
@@ -61,8 +90,8 @@ export function Checkout({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (submitting.current) return;
-    if (name.trim().length < 2 || !/^[6-9]\d{9}$/.test(phone)) {
-      setError("Enter your name and a valid 10-digit mobile number.");
+    if (!customer) {
+      setError("Please sign in before checkout.");
       return;
     }
     submitting.current = true;
@@ -70,7 +99,7 @@ export function Checkout({
     onBusy(true);
     setError("");
     try {
-      const payload = { name: name.trim(), phone: `+91${phone}`, items };
+      const payload = { name: name.trim(), phone: customer.phone, items };
       const digest = await crypto.subtle.digest(
         "SHA-256",
         new TextEncoder().encode(JSON.stringify(payload)),
@@ -107,6 +136,10 @@ export function Checkout({
       }
     } catch (e) {
       setError((e as Error).message);
+      const session = await api<{ customer: CustomerIdentity | null }>(
+        "auth/session",
+      ).catch(() => null);
+      if (!session?.customer) setCustomer(null);
       await refresh();
     } finally {
       submitting.current = false;
@@ -132,6 +165,16 @@ export function Checkout({
         </button>
       </div>
     );
+  if (loadingSession) return <p role="status">Checking sign in…</p>;
+  if (!customer)
+    return (
+      <div>
+        <button className="text-button" onClick={onBack}>
+          Back to bag
+        </button>
+        <CustomerLogin onSuccess={signedIn} />
+      </div>
+    );
   return (
     <form className="checkout-form" onSubmit={submit}>
       <button
@@ -143,7 +186,7 @@ export function Checkout({
         <ArrowLeft size={16} /> Back to bag
       </button>
       <div>
-        <h3>Just your name and number.</h3>
+        <h3>Confirm your order.</h3>
         <p>The store will contact you to confirm your request.</p>
       </div>
       <div className="field">
@@ -155,6 +198,7 @@ export function Checkout({
           required
           minLength={2}
           maxLength={80}
+          readOnly
           value={name}
           disabled={busy}
           onChange={(e) => setName(e.target.value)}
@@ -174,6 +218,7 @@ export function Checkout({
             pattern="[6-9][0-9]{9}"
             maxLength={10}
             placeholder="10-digit mobile number"
+            readOnly
             value={phone}
             disabled={busy}
             onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}

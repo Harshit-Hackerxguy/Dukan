@@ -14,8 +14,11 @@ import {
 } from "@/server/http";
 import {
   requireAdmin,
-  requestOtp,
-  verifyOtp,
+  loginAdmin,
+  loginCustomer,
+  getCustomer,
+  getAdmin,
+  CUSTOMER_COOKIE,
   COOKIE,
   cookieOptions,
 } from "@/server/auth";
@@ -53,24 +56,50 @@ async function route(
       return json(await availability(data.items));
     }
     if (req.method === "POST" && route === "checkout") {
+      const customer = await getCustomer();
+      if (!customer) throw new HttpError(401, "Please sign in before checkout");
       await rateLimit("checkout", clientKey(req), 30, 600);
       return json(
         await checkout(
-          await body(req),
+          { ...(await body(req)), ...customer },
           req.headers.get("idempotency-key") || "",
         ),
         201,
       );
     }
-    if (req.method === "POST" && route === "auth/request") {
-      await rateLimit("otp-request", clientKey(req), 10, 600);
-      const data = z.object({ phone: z.string() }).parse(await body(req));
-      return json(await requestOtp(data.phone));
+    if (req.method === "GET" && route === "auth/session") {
+      const admin = await getAdmin();
+      return json({
+        customer: await getCustomer(),
+        admin: admin ? { name: admin.name } : null,
+      });
     }
-    if (req.method === "POST" && route === "auth/verify") {
-      await rateLimit("otp-verify", clientKey(req), 20, 600);
-      const token = await verifyOtp(await body(req));
+    if (req.method === "POST" && route === "auth/login") {
+      await rateLimit("password-login", clientKey(req), 30, 600);
+      const token = await loginAdmin(await body(req));
       (await cookies()).set(COOKIE, token, cookieOptions);
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && route === "auth/customer") {
+      await rateLimit("customer-login", clientKey(req), 30, 600);
+      const token = await loginCustomer(await body(req));
+      const jar = await cookies();
+      const previous = jar.get(CUSTOMER_COOKIE)?.value;
+      if (previous)
+        await db.customerSession.deleteMany({
+          where: { tokenHash: hash(previous) },
+        });
+      jar.set(CUSTOMER_COOKIE, token, cookieOptions);
+      return json({ ok: true });
+    }
+    if (req.method === "POST" && route === "auth/customer/logout") {
+      const jar = await cookies();
+      const token = jar.get(CUSTOMER_COOKIE)?.value;
+      if (token)
+        await db.customerSession.deleteMany({
+          where: { tokenHash: hash(token) },
+        });
+      jar.set(CUSTOMER_COOKIE, "", { ...cookieOptions, maxAge: 0 });
       return json({ ok: true });
     }
     if (req.method === "POST" && route === "auth/logout") {

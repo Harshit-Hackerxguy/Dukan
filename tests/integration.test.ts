@@ -13,7 +13,12 @@ import {
   archiveProduct,
 } from "../src/server/catalogue";
 import { checkout, listOrders, setOrderStatus } from "../src/server/orders";
-import { getAdmin, requestOtp, verifyOtp } from "../src/server/auth";
+import {
+  getAdmin,
+  loginAdmin,
+  loginCustomer,
+  getCustomer,
+} from "../src/server/auth";
 import { hash } from "../src/server/http";
 import type { Product } from "../src/lib/products";
 if (!new URL(process.env.DATABASE_URL!).pathname.endsWith("_test"))
@@ -465,43 +470,50 @@ test("PostgreSQL business workflows and security invariants", async (t) => {
     assert.equal(Number(result.trim()), before.quantity);
   });
   await t.test(
-    "OTP is restricted, expires, is single use, and stores only session hashes",
+    "password login permits only approved admins and sessions expire",
     async () => {
       assert.equal(await getAdmin("invalid-token"), null);
-      await assert.rejects(requestOtp("+919876543212"), /not authorized/);
-      const challenge = await requestOtp(admin.phone);
       await assert.rejects(
-        verifyOtp({ challengeId: challenge.challengeId, code: "000000" }),
+        loginAdmin({
+          phone: admin.phone,
+          password: process.env.TEST_ADMIN_PASSWORD,
+        }),
         /Invalid/,
       );
-      const token = await verifyOtp({
-        challengeId: challenge.challengeId,
-        code: process.env.TEST_OTP,
+      for (const phone of ["+919973700894", "+919308604097"]) {
+        await assert.rejects(
+          loginAdmin({ phone, password: "wrong-password" }),
+          /Invalid/,
+        );
+        const token = await loginAdmin({
+          phone,
+          password: process.env.TEST_ADMIN_PASSWORD,
+        });
+        assert.equal((await getAdmin(token))?.phone, phone);
+        const session = await db.adminSession.findUniqueOrThrow({
+          where: { tokenHash: hash(token) },
+        });
+        assert.notEqual(session.tokenHash, token);
+        await db.adminSession.update({
+          where: { id: session.id },
+          data: { expiresAt: new Date(0) },
+        });
+        assert.equal(await getAdmin(token), null);
+      }
+      const customerToken = await loginCustomer({
+        name: "Customer",
+        phone: "9973700894",
       });
-      assert.equal((await getAdmin(token))?.id, admin.id);
-      await assert.rejects(
-        verifyOtp({
-          challengeId: challenge.challengeId,
-          code: process.env.TEST_OTP,
-        }),
-        /Invalid|already used/,
-      );
-      const session = await db.adminSession.findUniqueOrThrow({
-        where: { tokenHash: hash(token) },
+      assert.equal(await getAdmin(customerToken), null);
+      assert.deepEqual(await getCustomer(customerToken), {
+        name: "Customer",
+        phone: "+919973700894",
       });
-      assert.notEqual(session.tokenHash, token);
-      await db.adminSession.update({
-        where: { id: session.id },
+      await db.customerSession.update({
+        where: { tokenHash: hash(customerToken) },
         data: { expiresAt: new Date(0) },
       });
-      assert.equal(await getAdmin(token), null);
-      const expired = await db.otpChallenge.create({
-        data: { phone: admin.phone, expiresAt: new Date(0) },
-      });
-      await assert.rejects(
-        verifyOtp({ challengeId: expired.id, code: process.env.TEST_OTP }),
-        /expired/,
-      );
+      assert.equal(await getCustomer(customerToken), null);
     },
   );
   await t.test("archive preserves historical records", async () => {

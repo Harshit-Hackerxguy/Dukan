@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { db } from "../src/server/db";
-import { phoneSchema } from "../src/server/validation";
+import { adminAccounts } from "../src/server/admin-accounts";
 import { categories, initialProducts } from "./seed-data";
 async function main() {
   if (process.env.NODE_ENV === "production")
@@ -9,10 +9,11 @@ async function main() {
     );
   for (const c of categories)
     await db.category.upsert({ where: { id: c.id }, create: c, update: {} });
-  const phone = phoneSchema.parse(process.env.ADMIN_PHONE);
+  const account = adminAccounts[0];
+  const phone = account.phone;
   const admin = await db.admin.upsert({
     where: { phone },
-    create: { phone, name: process.env.ADMIN_NAME || "Store owner" },
+    create: { ...account, name: "Store admin" },
     update: {},
   });
   await db.storeSettings.upsert({

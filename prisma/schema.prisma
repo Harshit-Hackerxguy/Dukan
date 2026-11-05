@@ -33,15 +33,16 @@ enum JobStatus {
 }
 
 model Admin {
-  id          String             @id @default(uuid())
-  phone       String             @unique
-  name        String
-  active      Boolean            @default(true)
-  createdAt   DateTime           @default(now())
-  sessions    AdminSession[]
-  adjustments StockAdjustment[]
-  balances    InventoryBalance[]
-  auditLogs   AuditLog[]
+  passwordHash String?
+  id           String             @id @default(uuid())
+  phone        String             @unique
+  name         String
+  active       Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  sessions     AdminSession[]
+  adjustments  StockAdjustment[]
+  balances     InventoryBalance[]
+  auditLogs    AuditLog[]
 }
 
 model AdminSession {
@@ -266,4 +267,15 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([adminId, createdAt])
+}
+
+model CustomerSession {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  name      String
+  phone     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }

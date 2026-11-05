@@ -1,4 +1,5 @@
 "use client";
+import { Profile } from "@/components/account/profile";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -172,6 +173,7 @@ export function Storefront() {
               </strong>
             </span>
           </button>
+          <Profile />
           <button
             className="mobile-menu-button icon-button"
             aria-label="Open navigation"

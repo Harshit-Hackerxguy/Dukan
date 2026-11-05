@@ -1,14 +1,14 @@
 # Dukan — wholesale store, Phase 3
 
-PostgreSQL-backed catalogue, manual inventory, guest order requests, private cash memo PDFs, admin OTP sign-in, and manual bill sharing through WhatsApp. This branch combines the latest Phase 2 customer design, checkout, and Sanjay Store cash memo renderer with Phase 3 permanent database records.
+PostgreSQL-backed catalogue, manual inventory, guest order requests, private cash memo PDFs, admin password sign-in, and manual bill sharing through WhatsApp. This branch combines the latest Phase 2 customer design, checkout, and Sanjay Store cash memo renderer with Phase 3 permanent database records.
 
 ## Business rules
 
 - **Only explicit admin stock edits change inventory.** Checkout, PDFs, manual sharing, and order status updates never deduct or reserve stock.
 - Public catalogue responses contain availability flags, never exact quantities. Quantities are checked when adding to a bag and again at checkout.
-- Guest customers provide only name and mobile number. Numbers are normalized to E.164 but remain unverified. Matching a phone links requests; it grants no access to history.
+- Customers sign in before checkout with only name and mobile number. Numbers are normalized to E.164 but remain unverified. Matching a phone links requests; it grants no access to history.
 - Orders preserve product, package, customer, price, and total snapshots. Cash memo bytes are immutable. Completed means explicitly marked completed by an admin, not electronic payment.
-- No payment gateways, customer accounts, reservations, daily summaries, or timed reports.
+- No payment gateways, reservations, daily summaries, or timed reports.
 
 ## Local setup
 
@@ -16,7 +16,7 @@ Requires Node.js 22.13+ and PostgreSQL 16+. Use npm and a persistent PostgreSQL 
 
 ```bash
 cp .env.example .env
-# Edit DATABASE_URL, APP_ORIGIN, and ADMIN_PHONE.
+# Edit DATABASE_URL and APP_ORIGIN.
 npm ci
 npm run db:generate
 npm run db:migrate
@@ -25,8 +25,6 @@ npm run dev
 ```
 
 Open `APP_ORIGIN` exactly as configured (including hostname and port). `/` is the storefront; `/admin` redirects unauthenticated users to `/admin-login`. The seed supplies six demo products with 100 packages each, with explicit development adjustment records. Seed runs are additive and do not overwrite prices or stock. **Do not use development stock in a real store.** New products created through the admin UI start at zero until an explicit stock edit.
-
-For local testing only, `.env` can set `ALLOW_TEST_AUTH=true` and a six-digit `TEST_OTP`. The bypass is ignored when `NODE_ENV=production`. Never enable it on a shared development server or reuse development sessions/database in production. No OTP bypass is exposed by an API.
 
 Prisma uses its JavaScript query compiler with the PostgreSQL driver. The optional `PRISMA_CLI_JS=true` setting selects Prisma 6's experimental bundled WASM tooling for **development schema generation** when native downloads are blocked. Leave it unset in normal deployment environments. `npm run db:migrate` uses the stable PostgreSQL driver directly and does not depend on that experimental migration engine.
 
@@ -51,30 +49,19 @@ npm start
 
 Keep `assets/fonts/` in deployment artifacts; Next.js output tracing includes the Noto font files used for English/Hindi PDFs. Their license is included. No background delivery worker or WhatsApp API credentials are required.
 
-## Admin OTP and security configuration
+## Login and deployment configuration
 
-Configure Twilio Verify:
+Admins sign in at `/admin-login` with a mobile number and password. Only `+919973700894` and `+919308604097` are authorized. The password-login migration provisions the requested initial credentials as salted scrypt hashes, disables other admins and revokes old sessions. `db:bootstrap` preserves existing password hashes. Twilio, OTP endpoints, test-auth bypasses and SMS credentials have been removed.
 
-1. Create an SMS-enabled Verify service and configure `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID` on the server.
-2. Set `ADMIN_PHONE` to the authorized number in E.164 format and run `npm run db:bootstrap`.
-3. Set `APP_ORIGIN` to the exact HTTPS production origin. Confirm SMS delivery and verification with the real admin number.
-4. Keep test auth disabled. Sessions last eight hours; only token hashes are stored. Cookies are HttpOnly, SameSite=Strict, and Secure in production. Sign-out revokes the session.
+Customers use the profile icon immediately to the right of the bag button to enter their name and phone number without verification. Browsing and bag edits remain public. Checkout requires a valid customer session, and the server takes the order name/phone from that session. These sessions do not verify phone ownership and grant no access to admin records or previous orders, even when an admin phone number is entered.
 
-OTP requests and verification attempts are rate limited in PostgreSQL. Challenges expire after five minutes and allow at most five guesses. Important admin operations are audited. Every admin API checks authorization server-side; the admin layout also checks it. Mutations require an exact Origin match. API responses containing personal data and private PDFs are not cached.
+Set `DATABASE_URL`, `APP_ORIGIN` (the exact HTTPS site origin, without a trailing slash), and `NODE_ENV=production`. No `ADMIN_PHONE`, Twilio or WhatsApp environment variables are needed. Keep `TRUST_PROXY=false` unless the hosting proxy replaces client-supplied forwarded IP headers. Password attempts are rate limited. Session cookies are HttpOnly, SameSite=Strict, and Secure in production; only token hashes are stored, with an eight-hour expiry.
 
-`TRUST_PROXY=false` uses conservative shared rate limits. Set it to true **only** behind a reverse proxy that strips client-supplied `X-Forwarded-For` and writes the actual address. Configure HTTPS, request-body limits, and network access to PostgreSQL at deployment. Use a dedicated runtime database user with only required table/sequence permissions, and a separate migration identity. Do not expose database credentials or provider secrets through `NEXT_PUBLIC_*` variables.
-
-To rotate the admin identity, a trusted operator must update `ADMIN_PHONE` in protected server configuration and run:
-
-```bash
-npm run db:bootstrap -- --rotate-admin
-```
-
-This disables prior admins, revokes their sessions, and records an audit event. Restart web processes with the updated configuration. Configure and test OTP access for the new number before ending the operator's recovery access.
+For Render, use build command `npm ci --include=dev && npm run build` and start command `npm run db:migrate && npm run db:bootstrap && npm start -- -p "$PORT"`. Use Node 22.13+ and a persistent PostgreSQL database. Existing deployments must stop the retired WhatsApp worker before upgrading. Run migrations before serving the new release; existing orders and PDF bytes are preserved. Do not run the development seed on production.
 
 ## Manual WhatsApp sharing
 
-Customer pages, checkout, inventory behavior, and PDF layout are unchanged. Checkout saves the order and immutable PDF together, without creating any delivery jobs. The existing customer receipt uses its manual-sharing status message. No WhatsApp Cloud API requests, webhooks, retry routes, worker scripts, recipient settings, or provider configuration remain active.
+Inventory behavior and PDF layout are preserved. Checkout saves the order and immutable PDF together, without creating any delivery jobs. The existing customer receipt uses its manual-sharing status message. No WhatsApp Cloud API requests, webhooks, retry routes, worker scripts, recipient settings, or provider configuration remain active.
 
 In Admin → Orders, **Download memo** and **Preview PDF** work as before. **Share on whatsapp** fetches the private PDF, starts its download, then opens the WhatsApp chat for the phone snapshot saved on that order. The admin attaches the downloaded PDF and sends it manually. A `wa.me` link cannot automatically attach local files or send messages.
 
@@ -126,17 +113,17 @@ npm run db:migrate
 npm run test:integration
 
 # Create another database whose name ends in _e2e, then set DATABASE_URL to it.
-# Use APP_ORIGIN=http://127.0.0.1:3000 and the test-only admin/OTP values.
+# Use APP_ORIGIN=http://127.0.0.1:3000 and set TEST_ADMIN_PASSWORD to the configured admin password.
 npm run db:migrate
 npm run db:seed
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium npm test
 ```
 
-Install Chromium with `npx playwright install chromium` if needed. Browser tests use an isolated admin session fixture and separately exercise the OTP UI, unauthorized APIs, private PDFs, checkout, inventory, mobile layouts, and accessibility. Test data is retained in its isolated database; use a fresh test database for a clean suite run, or archive prior test products explicitly. Do not point a running dev server at a different database from the test runner.
+Install Chromium with `npx playwright install chromium` if needed. Browser tests use an isolated admin session fixture and separately exercise password and customer sign-in, unauthorized APIs, private PDFs, checkout, inventory, mobile layouts, and accessibility. Test data is retained in its isolated database; use a fresh test database for a clean suite run, or archive prior test products explicitly. Do not point a running dev server at a different database from the test runner.
 
-Integration tests cover product/variant CRUD, manual adjustments, multi-row rollback, concurrent stock edits, hidden public quantities, price revalidation, concurrent idempotent checkout, PDF generation, historical snapshots, unchanged stock after checkout/status updates, absence of new delivery jobs, snapshot-based manual share links, repeat guest records, new-process persistence, OTP restrictions/expiry/reuse, and archival.
+Integration tests cover product/variant CRUD, manual adjustments, multi-row rollback, concurrent stock edits, hidden public quantities, price revalidation, concurrent idempotent checkout, PDF generation, historical snapshots, unchanged stock after checkout/status updates, absence of new delivery jobs, snapshot-based manual share links, repeat guest records, new-process persistence, password restrictions and session expiry, and archival.
 
-Live Twilio SMS calls have not been verified without real credentials. Production deployment, provider permissions, HTTPS configuration, and a production backup/restore drill must be configured and verified before treating this as a live service.
+Configure HTTPS and database backups on the production host.
 
 ## Integration with Phase 2
 
@@ -144,6 +131,6 @@ The latest Phase 2 changes are included in this branch: the compact storefront, 
 
 The temporary synchronous file repositories and their development routes are replaced by explicit asynchronous PostgreSQL queries in `src/server/catalogue.ts`, `orders.ts`, and `auth.ts`, sharing the serializable transaction boundary in `db.ts`. This is the deliberate asynchronous contract migration described in the Phase 2 notes; the JSON adapter is no longer used by an application route. Existing `.data/` files are left untouched. Review and migrate any real Phase 2 development records separately before selecting a live database.
 
-Existing server configurations can still use the Phase 2 names `SITE_ORIGIN` and `TRUST_PROXY_IP`; the corresponding Phase 3 variable takes precedence when both are set. Old WhatsApp configuration is unused. Use the documented Phase 3 test-only OTP flags for isolated local testing.
+Existing server configurations can still use the Phase 2 names `SITE_ORIGIN` and `TRUST_PROXY_IP`; the corresponding Phase 3 variable takes precedence when both are set. Old WhatsApp configuration is unused. Tests use TEST_ADMIN_PASSWORD only as input to the real password checks; it is not an authentication bypass.
 
 `docs/phase2.md` and `docs/validation.md` are historical records. The setup and verification commands in this README describe the current PostgreSQL application. `npm run test:unit` verifies the preserved memo layout, currency, fonts, and multi-page rendering without a database.

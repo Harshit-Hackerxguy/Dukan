@@ -122,6 +122,7 @@ test("checkout creates private memo and completion keeps inventory unchanged", a
     .click();
   await dialog.getByLabel("Customer name").fill("Browser customer");
   await dialog.getByLabel("Mobile number").fill("9876543215");
+  await dialog.getByRole("button", { name: "Continue as customer" }).click();
   await dialog
     .getByRole("button", { name: "Submit Order", exact: true })
     .click();
@@ -167,7 +168,7 @@ test("checkout creates private memo and completion keeps inventory unchanged", a
     page.getByRole("heading", { name: "Browser customer" }),
   ).toBeVisible();
 });
-test("admin OTP flow rejects wrong phone and wrong code, then sets a secure session", async ({
+test("admin password login rejects invalid credentials and signs out", async ({
   browser,
 }) => {
   const context = await browser.newContext({
@@ -176,20 +177,22 @@ test("admin OTP flow rejects wrong phone and wrong code, then sets a secure sess
   const page = await context.newPage();
   await page.goto(`${origin}/admin-login`);
   await page.getByLabel("Mobile number").fill("9876543212");
-  await page.getByRole("button", { name: "Send OTP" }).click();
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill(process.env.TEST_ADMIN_PASSWORD!);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.locator(".form-error[role=alert]")).toContainText(
-    "not authorized",
+    "Invalid",
   );
-  await page.getByLabel("Mobile number").fill("9876543210");
-  await page.getByRole("button", { name: "Send OTP" }).click();
-  await page.getByLabel("Verification code").fill("000000");
+  await page.getByLabel("Mobile number").fill("9973700894");
+  await page.getByLabel("Password", { exact: true }).fill("wrong-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.locator(".form-error[role=alert]")).toContainText(
     "Invalid",
   );
   await page
-    .getByLabel("Verification code")
-    .fill(process.env.TEST_OTP || "123456");
+    .getByLabel("Password", { exact: true })
+    .fill(process.env.TEST_ADMIN_PASSWORD!);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(`${origin}/admin`);
   const cookie = (await context.cookies()).find(
@@ -197,7 +200,7 @@ test("admin OTP flow rejects wrong phone and wrong code, then sets a secure sess
   )!;
   expect(cookie.httpOnly).toBe(true);
   expect(cookie.sameSite).toBe("Strict");
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/admin-login/);
   expect(
     (await context.request.get(`${origin}/api/admin/orders`)).status(),

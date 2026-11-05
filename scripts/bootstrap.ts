@@ -1,45 +1,30 @@
 import "dotenv/config";
 import { db } from "../src/server/db";
-import { phoneSchema } from "../src/server/validation";
+import { adminAccounts } from "../src/server/admin-accounts";
 async function main() {
-  const phone = phoneSchema.parse(process.env.ADMIN_PHONE);
   await db.$transaction(async (tx) => {
-    const old = await tx.admin.findMany({
-      where: { active: true, phone: { not: phone } },
+    const phones = adminAccounts.map((a) => a.phone);
+    await tx.adminSession.deleteMany({
+      where: { admin: { phone: { notIn: phones } } },
     });
-    if (old.length && !process.argv.includes("--rotate-admin"))
-      throw new Error(
-        "Admin identity differs. Use --rotate-admin explicitly to revoke prior sessions and change the authorized identity.",
-      );
-    if (old.length) {
-      await tx.admin.updateMany({
-        where: { id: { in: old.map((a) => a.id) } },
-        data: { active: false },
-      });
-      await tx.adminSession.deleteMany({
-        where: { adminId: { in: old.map((a) => a.id) } },
+    await tx.admin.updateMany({
+      where: { phone: { notIn: phones } },
+      data: { active: false },
+    });
+    for (const account of adminAccounts) {
+      await tx.admin.upsert({
+        where: { phone: account.phone },
+        create: { ...account, name: "Store admin" },
+        update: { active: true },
       });
     }
-    const admin = await tx.admin.upsert({
-      where: { phone },
-      create: { phone, name: process.env.ADMIN_NAME || "Store owner" },
-      update: { active: true, name: process.env.ADMIN_NAME || "Store owner" },
-    });
     await tx.storeSettings.upsert({
       where: { id: "store" },
       create: {},
       update: {},
     });
-    await tx.auditLog.create({
-      data: {
-        adminId: admin.id,
-        action: old.length ? "ADMIN_IDENTITY_ROTATION" : "ADMIN_BOOTSTRAP",
-      },
-    });
   });
-  console.log(
-    "Admin and store configured; existing catalogue and stock preserved.",
-  );
+  console.log("Both approved admins and store settings configured.");
 }
 main()
   .catch((e) => {

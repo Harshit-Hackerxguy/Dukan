@@ -9,6 +9,10 @@ import {
 
 async function createOrder(request: APIRequestContext, page: Page) {
   const name = `Manual share ${randomUUID()}`;
+  await request.post("/api/auth/customer", {
+    headers: { Origin: "http://127.0.0.1:3000" },
+    data: { name, phone: "9876543216" },
+  });
   const response = await request.post("/api/checkout", {
     headers: {
       Origin: "http://127.0.0.1:3000",

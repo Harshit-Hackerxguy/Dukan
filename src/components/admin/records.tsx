@@ -629,8 +629,7 @@ export function Settings() {
           ))}
           <p>
             Authorized admin: {current.admin.name} · {current.admin.phone}.
-            Identity changes require the store owner’s protected server
-            configuration process.
+            Access is limited to the two approved admin accounts.
           </p>
           <button className="button button-primary" disabled={busy}>
             Save settings

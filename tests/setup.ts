@@ -9,7 +9,7 @@ export default async function setup() {
       "Browser tests require an isolated DATABASE_URL ending in _e2e",
     );
   const admin = await db.admin.findUniqueOrThrow({
-    where: { phone: process.env.ADMIN_PHONE },
+    where: { phone: "+919973700894" },
   });
   const token = randomBytes(32).toString("hex");
   const expires = Math.floor(Date.now() / 1000) + 3600;
